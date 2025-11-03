@@ -1,13 +1,18 @@
 import express from "express";
 import morgan from "morgan";
-// import pg from "pg";
 import { sql } from "./db.js";
 import dotenv from "dotenv";
 
-dotenv.config();
 
 const app = express();
 const port = process.env.PORT || 3000;
+
+dotenv.config();
+
+app.use(express.static("public"));
+app.use(express.urlencoded({ extended: true }));
+app.use(morgan("dev"));
+
 
 async function initDB() {
   try {
@@ -24,18 +29,6 @@ async function initDB() {
 }
 initDB();
 
-// const db = new pg.Client({
-//   user: "postgres",
-//   host: "localhost",
-//   database: "vlms",
-//   password: "1234567fkq.",
-//   port: 5432,
-// });
-// db.connect();
-
-app.use(express.static("public"));
-app.use(express.urlencoded({ extended: true }));
-app.use(morgan("dev"));
 
 app.get("/", async (req, res) => {
   try {
@@ -46,7 +39,7 @@ app.get("/", async (req, res) => {
     console.log("items:", items);
 
     res.render("index.ejs", {
-      listTitle: "Today",
+      listTitle: "Welcome to prowessity VLMS",
       listItems: items,
     });
   } catch (err) {
@@ -65,6 +58,7 @@ app.get("/login", (req, res) => {
 app.get("/signup", (req, res) => {
   res.render("signup.ejs");
 });
+
 
 app.listen(port, () => {
   console.log(`Server is running on port: ${port}`);

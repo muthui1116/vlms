@@ -1,21 +1,21 @@
 <%- include('partials/header.ejs'); -%>
 
-<div class="container py-4">
-  <h1 class="h4 mb-3"><%= listTitle %></h1>
-
+<div class="container">
   <div class="list-group">
-    <div class="row">
+    <div class="row mt-4">
       <% (listItems || []).map(item => { %>
-      <div class="col-12 col-md-3 -lg-3 me-2">
-        <div class="card mb-3" style="width: 18rem">
-          <div class="card-body">
+      <div class="col-12 col-sm-6 col-md-4 col-lg-3 mb-4">
+        <div class="card h-100 d-flex flex-column">
+          <div class="card-body flex-grow-1">
             <h5 class="card-title"><%= item.title %></h5>
             <h6 class="card-subtitle mb-2 text-muted">Subtitle here</h6>
             <p class="card-text">Some quick example text.</p>
             <a href="#" class="card-link">Card link</a>
           </div>
-          <!-- Mobile-first: stack buttons vertically, switch to horizontal on sm+ -->
-          <div class="d-flex flex-column flex-sm-row gap-2 p-3 pt-0">
+          <!-- Responsive action buttons: stack on xs, row on sm+ -->
+          <div
+            class="card-footer bg-transparent border-0 p-3 pt-0 d-flex flex-column flex-sm-row gap-2"
+          >
             <!-- Edit toggle (Bootstrap collapse) -->
             <button
               class="btn btn-sm btn-outline-secondary w-100 w-sm-auto"
