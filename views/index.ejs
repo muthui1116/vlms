@@ -1,84 +1,24 @@
 <%- include('partials/header.ejs'); -%>
 
 <div class="container">
-  <div class="list-group">
-    <div class="row mt-4">
-      <% (listItems || []).map(item => { %>
-      <div class="col-12 col-sm-6 col-md-4 col-lg-3 mb-4">
-        <div class="card h-100 d-flex flex-column">
-          <div class="card-body flex-grow-1">
-            <h5 class="card-title"><%= item.title %></h5>
-            <h6 class="card-subtitle mb-2 text-muted">Subtitle here</h6>
-            <p class="card-text">Some quick example text.</p>
-            <a href="#" class="card-link">Card link</a>
-          </div>
-          <!-- Responsive action buttons: stack on xs, row on sm+ -->
-          <div
-            class="card-footer bg-transparent border-0 p-3 pt-0 d-flex flex-column flex-sm-row gap-2"
+  <div class="row mt-4">
+    <% (listItems || []).map(item => { %>
+    <div class="col-12 col-sm-6 col-md-4 col-lg-3 mb-4">
+      <div class="card h-100 d-flex flex-column">
+        <div class="card-body flex-grow-1">
+          <h5 class="card-title"><%= item.title %></h5>
+          <p class="card-text"><%= item.description %></p>
+        </div>
+
+        <!-- Button footer: outline-success, full width, redirects to /login -->
+        <div class="card-footer bg-transparent border-0">
+          <a href="/login" class="btn btn-outline-success w-100" role="button"
+            >Get Started</a
           >
-            <!-- Edit toggle (Bootstrap collapse) -->
-            <button
-              class="btn btn-sm btn-outline-secondary w-100 w-sm-auto"
-              type="button"
-              data-bs-toggle="collapse"
-              data-bs-target="#edit-<%= item.id %>"
-            >
-              Edit
-            </button>
-            <!-- Delete (simple POST form) -->
-            <form action="/delete" method="post" class="m-0 w-100 w-sm-auto">
-              <input type="hidden" name="deleteItemId" value="<%= item.id %>" />
-              <button
-                type="submit"
-                class="btn btn-sm btn-outline-danger w-100 w-sm-auto"
-              >
-                Delete
-              </button>
-            </form>
-          </div>
         </div>
       </div>
-
-      <!-- Collapsible edit form -->
-      <div class="collapse mt-2" id="edit-<%= item.id %>">
-        <form action="/edit" method="post" class="d-flex gap-2">
-          <input type="hidden" name="updatedItemId" value="<%= item.id %>" />
-          <input
-            type="text"
-            name="updatedItemTitle"
-            class="form-control form-control-sm"
-            value="<%= item.title %>"
-            required
-          />
-          <button type="submit" class="btn btn-sm btn-primary">Save</button>
-        </form>
-      </div>
-
-      <% }) %>
-
-      <!-- Add new item -->
-      <form
-        class="list-group-item d-flex gap-2 mt-3"
-        action="/add"
-        method="post"
-      >
-        <input
-          type="text"
-          name="newItem"
-          class="form-control form-control-sm"
-          placeholder="New item"
-          required
-        />
-        <button
-          class="btn btn-sm btn-success"
-          type="submit"
-          name="list"
-          value="<%= listTitle %>"
-        >
-          Add
-        </button>
-      </form>
     </div>
+    <% }) %>
   </div>
 </div>
 

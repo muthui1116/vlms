@@ -34,12 +34,10 @@ app.get("/", async (req, res) => {
   try {
     const result = await sql`SELECT * FROM items ORDER BY id ASC`;
     console.log("SQL result:", result);
-    // const items = result.rows;
     const items = Array.isArray(result) ? result : result.rows ?? [];
     console.log("items:", items);
 
     res.render("index.ejs", {
-      listTitle: "Welcome to prowessity VLMS",
       listItems: items,
     });
   } catch (err) {
@@ -59,6 +57,9 @@ app.get("/signup", (req, res) => {
   res.render("signup.ejs");
 });
 
+app.post('/signup', async (req, res) =>{})
+
+app.post('/login', async (req, res) =>{})
 
 app.listen(port, () => {
   console.log(`Server is running on port: ${port}`);
