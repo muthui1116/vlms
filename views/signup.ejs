@@ -1,36 +1,89 @@
- 
-  <%- include('partials/header.ejs')  %>
- <main class="d-flex align-items-center justify-content-center mt-2">
-    <form class="p-4 bg-white rounded shadow-sm" style="width:320px;" method="POST" action="/signup">
-      <h5 class="mb-3 text-center">Create account</h5>
+<%- include('partials/header.ejs') %>
 
-      <div class="mb-3">
-        <label for="name" class="form-label small">Full name</label>
-        <input id="name" name="username" type="text" class="form-control form-control-sm" placeholder="Your name" required>
-      </div>
+<style>
+  .auth-card { max-width: 420px; width: 100%; }
+  .google-btn { background: #fff; border: 1px solid #e0e0e0; color: #202124; }
+  .google-btn .fab { color: #d93025; }
+  .divider { height: 1px; background: #e9ecef; margin: .75rem 0 1rem; }
+</style>
 
-      <div class="mb-3">
-        <label for="email" class="form-label small">Email</label>
-        <input id="email" name="email" type="email" class="form-control form-control-sm" placeholder="you@example.com" required>
-      </div>
+<main class="d-flex align-items-center justify-content-center" style="min-height:70vh;">
+  <div class="card auth-card shadow-sm border-0 rounded">
+    <div class="card-body p-4">
+      <form action="/signup" method="POST" role="form" aria-label="Create account form" novalidate>
+        <h5 class="mb-3 text-center">Create account</h5>
 
-      <div class="mb-3">
-        <label for="password" class="form-label small">Password</label>
-        <input id="password" name="password" type="password" class="form-control form-control-sm" placeholder="Password" required>
-      </div>
+        <div class="form-floating mb-3">
+          <input
+            id="username"
+            name="username"
+            type="text"
+            class="form-control"
+            placeholder="Your name"
+            required
+            aria-required="true"
+          />
+          <label for="username">Full name</label>
+        </div>
 
-      <div class="mb-3 form-check">
-        <input id="terms" name="terms" type="checkbox" class="form-check-input" required>
-        <label for="terms" class="form-check-label small">I agree to the Terms</label>
-      </div>
+        <div class="form-floating mb-3">
+          <input
+            id="email"
+            name="email"
+            type="email"
+            class="form-control"
+            placeholder="you@example.com"
+            required
+            aria-required="true"
+          />
+          <label for="email">Email</label>
+        </div>
 
-      <div class="d-grid">
-        <button type="submit" class="btn btn-primary btn-sm">Sign up</button>
-      </div>
+        <div class="form-floating mb-3">
+          <input
+            id="password"
+            name="password"
+            type="password"
+            class="form-control"
+            placeholder="Password"
+            required
+            aria-required="true"
+          />
+          <label for="password">Password</label>
+        </div>
 
-      <p class="text-center small text-muted mt-2 mb-0">Already have an account? <a href="/login">Sign in</a></p>
-    </form>
-  </main>
+        <div class="d-grid mb-3">
+          <button type="submit" class="btn btn-primary">Sign up</button>
+        </div>
 
-  
-  <%- include('partials/footer.ejs')  %>
+        <div class="divider" aria-hidden="true"></div>
+
+        <div class="mb-3">
+          <a
+            class="btn google-btn w-100 d-flex align-items-center justify-content-center gap-2"
+            href="/auth/google"
+            role="button"
+            aria-label="Sign up with Google"
+          >
+            <i class="fab fa-google"></i>
+            <span>Sign up with Google</span>
+          </a>
+        </div>
+
+        <div class="d-grid mt-2">
+          <a
+            href="https://prowessity.com/"
+            class="btn btn-outline-secondary"
+            role="button"
+            target="_blank"
+            rel="noopener noreferrer"
+          >
+            Enroll Now
+          </a>
+        </div>
+      </form>
+    </div>
+  </div>
+</main>
+
+<%- include('partials/footer.ejs') %>
