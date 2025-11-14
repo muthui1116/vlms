@@ -20,13 +20,29 @@ app.use(express.static("public"));
 app.use(express.urlencoded({ extended: true }));
 app.use(morgan("dev"));
 
+// Make sure SESSION_SECRET is defined. Fail fast in production to avoid insecure defaults.
+const SESSION_SECRET = process.env.SESSION_SECRET;
+if (!SESSION_SECRET) {
+  if (process.env.NODE_ENV === "production") {
+    console.error(
+      "ERROR: SESSION_SECRET is not set. Set SESSION_SECRET in your environment and restart."
+    );
+    process.exit(1);
+  } else {
+    console.warn(
+      "Warning: SESSION_SECRET is not set. Using a development fallback secret. Do NOT use this in production."
+    );
+  }
+}
+
 app.use(
   session({
-    secret: process.env.SESSION_SECRET,
+    secret: SESSION_SECRET || "dev-fallback-secret",
     resave: false,
     saveUninitialized: true,
     cookie: {
       maxAge: 1000 * 60 * 60 * 24,
+      // secure: true // enable in production with HTTPS
     },
   })
 );
@@ -92,14 +108,6 @@ app.get("/dashboard", (req, res) => {
     return res.redirect("/login");
   }
 });
-
-app.get(
-  "/auth/google",
-  passport.authenticate("google", {
-    scope: ["profile", "email"],
-    prompt: "consent",
-  })
-);
 
 app.post("/signup", async (req, res) => {
   const username = req.body.username;
@@ -195,70 +203,99 @@ passport.use(
   )
 );
 
-// Use an env var for callback, and default to localhost for local dev
-const GOOGLE_CALLBACK_URL = process.env.GOOGLE_CALLBACK_URL || "http://localhost:3000/auth/google/prowessityvlms";
+// Only initialize Google strategy and routes when the required env vars are present.
+// This prevents the app from crashing when CLIENT_ID or CLIENT_SECRET are missing.
+const CLIENT_ID = process.env.CLIENT_ID;
+const CLIENT_SECRET = process.env.CLIENT_SECRET;
+let GOOGLE_CALLBACK_URL = process.env.GOOGLE_CALLBACK_URL;
 
-passport.use(
-  "google",
-  new GoogleStrategy(
-    {
-      clientID: process.env.CLIENT_ID,
-      clientSecret: process.env.CLIENT_SECRET,
-      callbackURL: GOOGLE_CALLBACK_URL,
-      // passport-google-oauth20 already fetches profile including emails with the profile scope
-    },
-    async (accessToken, refreshToken, profile, cb) => {
-      try {
-        // Extract email correctly from profile
-        const email = profile.emails?.[0]?.value;
-        const usernameFromProfile = profile.displayName ?? profile.username ?? "GoogleUser";
+if (CLIENT_ID && CLIENT_SECRET) {
+  // If callback isn't provided, use a sensible default for local dev
+  if (!GOOGLE_CALLBACK_URL) {
+    GOOGLE_CALLBACK_URL = `${process.env.BASE_URL || `http://localhost:${port}`}/auth/google/callback`;
+    console.warn(
+      `GOOGLE_CALLBACK_URL not set. Using fallback ${GOOGLE_CALLBACK_URL}. Make sure this value is registered in your Google Cloud OAuth credentials.`
+    );
+  }
 
-        if (!email) {
-          return cb(new Error("No email found in Google profile"));
-        }
+  passport.use(
+    "google",
+    new GoogleStrategy(
+      {
+        clientID: CLIENT_ID,
+        clientSecret: CLIENT_SECRET,
+        callbackURL: GOOGLE_CALLBACK_URL,
+      },
+      async (accessToken, refreshToken, profile, cb) => {
+        try {
+          const email = profile.emails?.[0]?.value;
+          const usernameFromProfile = profile.displayName ?? profile.username ?? "GoogleUser";
 
-        // Query using the tagged template literal and embedded value
-        const result = await sql`SELECT id, username, email FROM users WHERE email = ${email}`;
-
-        // Handle result shapes (array or { rows })
-        const existingUser =
-          Array.isArray(result) && result.length
-            ? result[0]
-            : result && result.rows && result.rows.length
-            ? result.rows[0]
-            : null;
-
-        if (!existingUser) {
-          // Insert a new user. Provide a placeholder password string for OAuth users.
-          const insert = await sql`
-            INSERT INTO users (email, username, password)
-            VALUES (${email}, ${usernameFromProfile}, ${"google"})
-            RETURNING id, email, username
-          `;
-
-          const newUser =
-            Array.isArray(insert) && insert.length
-              ? insert[0]
-              : insert && insert.rows
-              ? insert.rows[0]
-              : null;
-
-          if (!newUser) {
-            return cb(new Error("Failed to create user from Google profile"));
+          if (!email) {
+            return cb(new Error("No email found in Google profile"));
           }
 
-          // Return safe user object
-          return cb(null, { id: newUser.id, email: newUser.email, username: newUser.username });
-        } else {
-          return cb(null, { id: existingUser.id, email: existingUser.email, username: existingUser.username });
+          const result = await sql`SELECT id, username, email FROM users WHERE email = ${email}`;
+
+          const existingUser =
+            Array.isArray(result) && result.length
+              ? result[0]
+              : result && result.rows && result.rows.length
+              ? result.rows[0]
+              : null;
+
+          if (!existingUser) {
+            const insert = await sql`
+              INSERT INTO users (email, username, password)
+              VALUES (${email}, ${usernameFromProfile}, ${"google"})
+              RETURNING id, email, username
+            `;
+
+            const newUser =
+              Array.isArray(insert) && insert.length
+                ? insert[0]
+                : insert && insert.rows
+                ? insert.rows[0]
+                : null;
+
+            if (!newUser) {
+              return cb(new Error("Failed to create user from Google profile"));
+            }
+
+            return cb(null, { id: newUser.id, email: newUser.email, username: newUser.username });
+          } else {
+            return cb(null, { id: existingUser.id, email: existingUser.email, username: existingUser.username });
+          }
+        } catch (error) {
+          console.error("Google strategy error:", error);
+          return cb(error);
         }
-      } catch (error) {
-        console.error("Google strategy error:", error);
-        return cb(error);
       }
-    }
-  )
-);
+    )
+  );
+
+  // Routes for Google OAuth must be registered after the strategy is set up
+  app.get(
+    "/auth/google",
+    passport.authenticate("google", {
+      scope: ["profile", "email"],
+      prompt: "consent",
+    })
+  );
+
+  // Use a conventional /auth/google/callback path; ensure GOOGLE_CALLBACK_URL matches this in Google Console
+  app.get(
+    "/auth/google/callback",
+    passport.authenticate("google", {
+      successRedirect: "/dashboard",
+      failureRedirect: "/login",
+    })
+  );
+} else {
+  console.warn(
+    "Google OAuth disabled: CLIENT_ID and CLIENT_SECRET are not both set. Set them to enable Google login."
+  );
+}
 
 passport.serializeUser((user, cb) => {
   // store only the user id in the session
@@ -278,14 +315,6 @@ passport.deserializeUser(async (id, cb) => {
 app.post(
   "/login",
   passport.authenticate("local", {
-    successRedirect: "/dashboard",
-    failureRedirect: "/login",
-  })
-);
-
-app.get(
-  "/auth/google/prowessityvlms",
-  passport.authenticate("google", {
     successRedirect: "/dashboard",
     failureRedirect: "/login",
   })
