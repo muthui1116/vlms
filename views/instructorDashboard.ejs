@@ -1,0 +1,176 @@
+<%- include('partials/header.ejs') %>
+
+<h4>Instructor dashboard</h4>
+
+<div class="row">
+  <div class="col-md-4">
+    <div class="card p-3 mb-3">
+      <h6>Create assignment</h6>
+      <form action="/instructor/create-assignment" method="POST" enctype="multipart/form-data">
+        <div class="mb-2">
+          <select name="course_id" class="form-select" required>
+            <option value="">Choose course</option>
+            <% (courses || []).forEach(c => { %>
+              <option value="<%= c.id %>"><%= c.title %></option>
+            <% }) %>
+          </select>
+        </div>
+        <div class="mb-2">
+          <input name="title" class="form-control" placeholder="Title" required />
+        </div>
+        <div class="mb-2">
+          <textarea name="description" class="form-control" rows="2" placeholder="Description"></textarea>
+        </div>
+        <div class="mb-2">
+          <input name="external_link" class="form-control" placeholder="Optional link" />
+        </div>
+        <div class="mb-2">
+          <input type="date" name="due_date" class="form-control" />
+        </div>
+        <div class="mb-2">
+          <label class="form-label small">Optional file</label>
+          <input type="file" name="file" class="form-control" />
+        </div>
+        <div class="mb-2">
+          <label class="form-label small">Target learners (hold Ctrl/Cmd to select many)</label>
+          <select name="target_learners" multiple class="form-select">
+            <% (learners || []).forEach(l => { %>
+              <option value="<%= l.id %>"><%= l.username %></option>
+            <% }) %>
+          </select>
+        </div>
+        <button class="btn btn-primary btn-sm">Create assignment</button>
+      </form>
+    </div>
+
+    <div class="card p-3 mb-3">
+      <h6>Create material</h6>
+      <form action="/instructor/create-material" method="POST" enctype="multipart/form-data">
+        <div class="mb-2">
+          <select name="course_id" class="form-select" required>
+            <option value="">Select course</option>
+            <% (courses || []).forEach(c => { %>
+              <option value="<%= c.id %>"><%= c.title %></option>
+            <% }) %>
+          </select>
+        </div>
+        <div class="mb-2">
+          <input name="title" class="form-control" placeholder="Title" required />
+        </div>
+        <div class="mb-2">
+          <textarea name="description" class="form-control" rows="2" placeholder="Description"></textarea>
+        </div>
+        <div class="mb-2">
+          <input name="external_link" class="form-control" placeholder="Optional link" />
+        </div>
+        <div class="mb-2">
+          <label class="form-label small">Optional file</label>
+          <input type="file" name="file" class="form-control" />
+        </div>
+        <button class="btn btn-outline-primary btn-sm">Create material</button>
+      </form>
+    </div>
+
+    <div class="card p-3">
+      <h6>Create meeting (Google Meet)</h6>
+      <form action="/instructor/create-meeting" method="POST">
+        <div class="mb-2">
+          <select name="course_id" class="form-select" required>
+            <option value="">Select course</option>
+            <% (courses || []).forEach(c => { %>
+              <option value="<%= c.id %>"><%= c.title %></option>
+            <% }) %>
+          </select>
+        </div>
+        <div class="mb-2">
+          <input name="link" class="form-control" placeholder="Meet link (https://)" required />
+        </div>
+        <div class="mb-2">
+          <input type="datetime-local" name="start_time" class="form-control" required />
+        </div>
+        <button class="btn btn-outline-primary btn-sm">Create meeting</button>
+      </form>
+    </div>
+  </div>
+
+  <div class="col-md-8">
+    <div class="card p-3 mb-3">
+      <h6>Assignments created</h6>
+      <% if (!assignments || assignments.length === 0) { %>
+        <div class="alert alert-info">No assignments yet</div>
+      <% } else { %>
+        <ul class="list-group">
+          <% assignments.forEach(a => { %>
+            <li class="list-group-item">
+              <strong><%= a.title %></strong> <small class="text-muted">(<%= a.course_title %>)</small>
+              <div class="small text-muted"><%= a.description %></div>
+              <% if (a.file_link) { %>
+                <div><a href="<%= a.file_link %>" download>Download file</a></div>
+              <% } %>
+              <% if (a.external_link) { %>
+                <div><a href="<%= a.external_link %>" target="_blank">Open link</a></div>
+              <% } %>
+            </li>
+          <% }) %>
+        </ul>
+      <% } %>
+    </div>
+
+    <div class="card p-3 mb-3">
+      <h6>Submissions to grade</h6>
+      <% if (!submissions || submissions.length === 0) { %>
+        <div class="alert alert-info">No submissions</div>
+      <% } else { %>
+        <ul class="list-group">
+          <% submissions.forEach(s => { %>
+            <li class="list-group-item">
+              <div class="d-flex justify-content-between">
+                <div>
+                  <strong><%= s.assignment_title %></strong><br/>
+                  <small class="text-muted"><%= s.learner_name %> — <%= s.course_title %></small>
+                  <% if (s.file_link) { %><div><a href="<%= s.file_link %>" target="_blank">File</a></div><% } %>
+                  <% if (s.external_link) { %><div><a href="<%= s.external_link %>" target="_blank">Link</a></div><% } %>
+                </div>
+                <div style="width:260px;">
+                  <form action="/instructor/grade" method="POST" class="d-flex gap-2">
+                    <input type="hidden" name="submission_id" value="<%= s.id %>" />
+                    <input name="grade" class="form-control form-control-sm" placeholder="e.g. 34/100" required />
+                    <button class="btn btn-sm btn-outline-primary">Grade</button>
+                  </form>
+                </div>
+              </div>
+            </li>
+          <% }) %>
+        </ul>
+      <% } %>
+    </div>
+
+    <div class="card p-3">
+      <h6>Recent meetings & materials</h6>
+      <% if ((meetings || []).length === 0 && (materials || []).length === 0) { %>
+        <div class="alert alert-info">No meetings or materials</div>
+      <% } %>
+
+      <% (meetings || []).forEach(m => { %>
+        <div class="mb-2">
+          <strong><%= m.course_title %></strong><br/>
+          <a href="<%= m.link %>" target="_blank">Join meeting</a> — <small class="text-muted"><%= m.start_time %></small>
+        </div>
+      <% }) %>
+
+      <% (materials || []).forEach(m => { %>
+        <div class="mb-2">
+          <strong><%= m.title %></strong> — <small class="text-muted"><%= m.course_title %></small><br/>
+          <% if (m.file_link) { %>
+            <a href="<%= m.file_link %>" download>Download</a>
+          <% } %>
+          <% if (m.external_link) { %>
+            <a href="<%= m.external_link %>" target="_blank">Open link</a>
+          <% } %>
+        </div>
+      <% }) %>
+    </div>
+  </div>
+</div>
+
+<%- include('partials/footer.ejs') %>

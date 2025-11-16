@@ -1,25 +1,47 @@
-<%- include('partials/header.ejs'); -%>
+<%- include('partials/header.ejs') %>
 
-<div class="container">
-  <div class="row mt-4">
-    <% (listItems || []).map(item => { %>
-    <div class="col-12 col-sm-6 col-md-4 col-lg-3 mb-4">
-      <div class="card h-100 d-flex flex-column">
-        <div class="card-body flex-grow-1">
-          <h5 class="card-title"><%= item.title %></h5>
-          <p class="card-text"><%= item.description %></p>
-        </div>
-
-        <!-- Button footer: outline-success, full width, redirects to /login -->
-        <div class="card-footer bg-transparent border-0">
-          <a href="/login" class="btn btn-outline-success w-100" role="button"
-            >Get Started</a
-          >
-        </div>
-      </div>
+<div class="hero mb-4">
+  <div class="row align-items-center">
+    <div class="col-md-8">
+      <h1>ProwessityVLMS</h1>
+      <p class="lead">Simple beginner-friendly virtual learning management system.</p>
     </div>
-    <% }) %>
+    <div class="col-md-4 text-md-end">
+      <% if (!user) { %>
+        <a class="btn btn-primary" href="/signup">Get started</a>
+        <a class="btn btn-outline-secondary" href="/login">Sign in</a>
+      <% } else { %>
+        <a class="btn btn-primary" href="/dashboard">Go to dashboard</a>
+      <% } %>
+    </div>
   </div>
 </div>
 
-<%- include('partials/footer.ejs'); -%>
+<h4>Courses</h4>
+<div class="row">
+  <% if (!courses || courses.length === 0) { %>
+    <div class="col-12">
+      <div class="alert alert-info">No courses yet — admin can create courses from the admin dashboard.</div>
+    </div>
+  <% } else { %>
+    <% courses.forEach(c => { %>
+      <div class="col-md-4 mb-3">
+        <div class="card h-100">
+          <div class="card-body d-flex flex-column">
+            <h5 class="card-title"><%= c.title %></h5>
+            <% if (c.description) { %>
+              <p class="card-text text-muted"><%= c.description %></p>
+            <% } %>
+            <div class="mt-auto">
+              <% if (c.link) { %>
+                <a href="<%= c.link %>" class="btn btn-outline-primary btn-sm" target="_blank" rel="noopener">Open link</a>
+              <% } %>
+            </div>
+          </div>
+        </div>
+      </div>
+    <% }) %>
+  <% } %>
+</div>
+
+<%- include('partials/footer.ejs') %>

@@ -1,325 +1,876 @@
 import express from "express";
 import morgan from "morgan";
-import { sql } from "./db.js";
 import dotenv from "dotenv";
-import bcrypt from "bcrypt";
 import session from "express-session";
+import bcrypt from "bcrypt";
 import passport from "passport";
 import { Strategy as LocalStrategy } from "passport-local";
-import { Strategy as GoogleStrategy } from "passport-google-oauth20";
+import multer from "multer";
+import path from "path";
+import fs from "fs";
+import { sql } from "./db.js";
 
-dotenv.config(); // ensure env vars are loaded before use
+dotenv.config();
 
 const app = express();
-const port = process.env.PORT || 3000;
+const PORT = process.env.PORT || 3000;
+const SESSION_SECRET = process.env.SESSION_SECRET || "dev-secret";
 const saltRounds = 10;
 
-app.set("view engine", "ejs");
+// Make sure uploads dir exists
+const UPLOAD_DIR = path.join(process.cwd(), "public", "uploads");
+fs.mkdirSync(UPLOAD_DIR, { recursive: true });
 
+// Multer config for file uploads with basic file-size limit
+const upload = multer({
+  dest: UPLOAD_DIR,
+  limits: { fileSize: 10 * 1024 * 1024 }, // 10MB
+});
+
+// Basic express setup
+app.set("view engine", "ejs");
 app.use(express.static("public"));
 app.use(express.urlencoded({ extended: true }));
+app.use(express.json());
 app.use(morgan("dev"));
-
-// Make sure SESSION_SECRET is defined. Fail fast in production to avoid insecure defaults.
-const SESSION_SECRET = process.env.SESSION_SECRET;
-if (!SESSION_SECRET) {
-  if (process.env.NODE_ENV === "production") {
-    console.error(
-      "ERROR: SESSION_SECRET is not set. Set SESSION_SECRET in your environment and restart."
-    );
-    process.exit(1);
-  } else {
-    console.warn(
-      "Warning: SESSION_SECRET is not set. Using a development fallback secret. Do NOT use this in production."
-    );
-  }
-}
-
 app.use(
   session({
-    secret: SESSION_SECRET || "dev-fallback-secret",
+    secret: SESSION_SECRET,
     resave: false,
-    saveUninitialized: true,
-    cookie: {
-      maxAge: 1000 * 60 * 60 * 24,
-      // secure: true // enable in production with HTTPS
-    },
+    saveUninitialized: false,
+    cookie: { maxAge: 1000 * 60 * 60 * 24 }, // 1 day
   })
 );
 
+// Passport local auth setup
 app.use(passport.initialize());
 app.use(passport.session());
 
-async function initDB() {
-  try {
-    // Create items table used on the index page
-    await sql`
-      CREATE TABLE IF NOT EXISTS items (
-        id SERIAL PRIMARY KEY,
-        title VARCHAR(100) NOT NULL
-      )
-    `;
-
-    // Create users table if it does not exist (useful for local testing)
-    await sql`
-      CREATE TABLE IF NOT EXISTS users (
-        id SERIAL PRIMARY KEY,
-        email VARCHAR(255) UNIQUE NOT NULL,
-        username VARCHAR(255) NOT NULL,
-        password VARCHAR(255) NOT NULL
-      )
-    `;
-  } catch (error) {
-    console.log("Error initDB", error);
-  }
-}
-initDB();
-
-app.get("/", async (req, res) => {
-  try {
-    const result = await sql`SELECT * FROM items ORDER BY id ASC`;
-    const items = Array.isArray(result) ? result : result.rows ?? [];
-    res.render("index.ejs", {
-      listItems: items,
-    });
-  } catch (err) {
-    console.log(err);
-    res.status(500).send("Server error");
-  }
+// Add this small middleware after passport.session() initialization (so req.user is available)
+// It ensures every template gets `user` as a local variable (either the logged-in user or null).
+app.use((req, res, next) => {
+  res.locals.user = req.user || null;
+  next();
 });
 
-app.get("/about", (req, res) => {
-  res.render("about.ejs");
-});
-
-app.get("/login", (req, res) => {
-  res.render("login.ejs");
-});
-
-app.get("/signup", (req, res) => {
-  res.render("signup.ejs");
-});
-
-app.get("/dashboard", (req, res) => {
-  if (req.isAuthenticated()) {
-    // pass user to template if needed
-    return res.render("dashboard.ejs", { user: req.user });
-  } else {
-    return res.redirect("/login");
-  }
-});
-
-app.post("/signup", async (req, res) => {
-  const username = req.body.username;
-  const email = req.body.email;
-  const password = req.body.password;
-
-  // Basic validation
-  if (!email || !password || !username) {
-    return res.status(400).send("Missing username, email or password");
-  }
-
-  try {
-    // @neondatabase/serverless returns an ARRAY of rows (not an object with .rows)
-    const checkResult = await sql`SELECT id FROM users WHERE email = ${email}`;
-
-    // treat checkResult as an array
-    if (checkResult && checkResult.length > 0) {
-      return res.status(409).send("Email already exists. Try logging in.");
-    }
-
-    // Use promise-style bcrypt hashing (await)
-    const hash = await bcrypt.hash(password, saltRounds);
-
-    // Insert user and return new row(s)
-    const insertResult = await sql`
-      INSERT INTO users (email, password, username)
-      VALUES (${email}, ${hash}, ${username})
-      RETURNING id, email, username
-    `;
-
-    // Handle both result shapes: array of rows OR { rows: [...] }
-    const user =
-      Array.isArray(insertResult) && insertResult.length > 0
-        ? insertResult[0]
-        : insertResult && insertResult.rows
-        ? insertResult.rows[0]
-        : null;
-
-    if (!user) {
-      console.error("Insert did not return a user:", insertResult);
-      return res.status(500).send("Failed to create user");
-    }
-
-    // Log the user in and redirect to dashboard
-    req.login(user, (err) => {
-      if (err) {
-        console.error("req.login error:", err);
-        return res.status(500).send("Login error after signup");
-      }
-      return res.redirect("/dashboard");
-    });
-  } catch (err) {
-    console.error("Signup error:", err);
-    return res.status(500).send("Server error");
-  }
-});
-
-// Configure passport-local to use 'email' as the usernameField
 passport.use(
-  "local",
-  new LocalStrategy(
-    { usernameField: "email", passwordField: "password" },
-    async function verify(email, password, cb) {
-      if (!email || !password) {
-        // For authentication callbacks, call cb with (null, false, info)
-        return cb(null, false, { message: "Missing email or password" });
-      }
-
-      try {
-        // IMPORTANT: sql`` returns an array of row objects (NOT { rows: [...] })
-        const rows = await sql`SELECT id, username, password, email FROM users WHERE email = ${email}`;
-
-        if (!rows || rows.length === 0) {
-          return cb(null, false, { message: "User not found" });
-        }
-
-        const user = rows[0];
-        const storedHashedPassword = user.password;
-
-        // Use promise-style compare
-        const match = await bcrypt.compare(password, storedHashedPassword);
-        if (match) {
-          // Don't include password in the session object
-          const safeUser = { id: user.id, username: user.username, email: user.email };
-          return cb(null, safeUser);
-        } else {
-          return cb(null, false, { message: "Incorrect password" });
-        }
-      } catch (err) {
-        return cb(err);
-      }
+  new LocalStrategy({ usernameField: "email", passwordField: "password" }, async (email, password, done) => {
+    try {
+      const rowsRes = await sql`SELECT id, username, email, password, role FROM users WHERE email = ${email.toLowerCase()}`;
+      const user = Array.isArray(rowsRes) ? rowsRes[0] : rowsRes?.rows?.[0];
+      if (!user) return done(null, false, { message: "User not found" });
+      const ok = await bcrypt.compare(password, user.password);
+      if (!ok) return done(null, false, { message: "Incorrect password" });
+      return done(null, { id: user.id, username: user.username, email: user.email, role: Number(user.role) });
+    } catch (err) {
+      return done(err);
     }
-  )
+  })
 );
 
-// Only initialize Google strategy and routes when the required env vars are present.
-// This prevents the app from crashing when CLIENT_ID or CLIENT_SECRET are missing.
-const CLIENT_ID = process.env.CLIENT_ID;
-const CLIENT_SECRET = process.env.CLIENT_SECRET;
-let GOOGLE_CALLBACK_URL = process.env.GOOGLE_CALLBACK_URL;
-
-if (CLIENT_ID && CLIENT_SECRET) {
-  // If callback isn't provided, use a sensible default for local dev
-  if (!GOOGLE_CALLBACK_URL) {
-    GOOGLE_CALLBACK_URL = `${process.env.BASE_URL || `http://localhost:${port}`}/auth/google/callback`;
-    console.warn(
-      `GOOGLE_CALLBACK_URL not set. Using fallback ${GOOGLE_CALLBACK_URL}. Make sure this value is registered in your Google Cloud OAuth credentials.`
-    );
-  }
-
-  passport.use(
-    "google",
-    new GoogleStrategy(
-      {
-        clientID: CLIENT_ID,
-        clientSecret: CLIENT_SECRET,
-        callbackURL: GOOGLE_CALLBACK_URL,
-      },
-      async (accessToken, refreshToken, profile, cb) => {
-        try {
-          const email = profile.emails?.[0]?.value;
-          const usernameFromProfile = profile.displayName ?? profile.username ?? "GoogleUser";
-
-          if (!email) {
-            return cb(new Error("No email found in Google profile"));
-          }
-
-          const result = await sql`SELECT id, username, email FROM users WHERE email = ${email}`;
-
-          const existingUser =
-            Array.isArray(result) && result.length
-              ? result[0]
-              : result && result.rows && result.rows.length
-              ? result.rows[0]
-              : null;
-
-          if (!existingUser) {
-            const insert = await sql`
-              INSERT INTO users (email, username, password)
-              VALUES (${email}, ${usernameFromProfile}, ${"google"})
-              RETURNING id, email, username
-            `;
-
-            const newUser =
-              Array.isArray(insert) && insert.length
-                ? insert[0]
-                : insert && insert.rows
-                ? insert.rows[0]
-                : null;
-
-            if (!newUser) {
-              return cb(new Error("Failed to create user from Google profile"));
-            }
-
-            return cb(null, { id: newUser.id, email: newUser.email, username: newUser.username });
-          } else {
-            return cb(null, { id: existingUser.id, email: existingUser.email, username: existingUser.username });
-          }
-        } catch (error) {
-          console.error("Google strategy error:", error);
-          return cb(error);
-        }
-      }
-    )
-  );
-
-  // Routes for Google OAuth must be registered after the strategy is set up
-  app.get(
-    "/auth/google",
-    passport.authenticate("google", {
-      scope: ["profile", "email"],
-      prompt: "consent",
-    })
-  );
-
-  // Use a conventional /auth/google/callback path; ensure GOOGLE_CALLBACK_URL matches this in Google Console
-  app.get(
-    "/auth/google/callback",
-    passport.authenticate("google", {
-      successRedirect: "/dashboard",
-      failureRedirect: "/login",
-    })
-  );
-} else {
-  console.warn(
-    "Google OAuth disabled: CLIENT_ID and CLIENT_SECRET are not both set. Set them to enable Google login."
-  );
-}
-
-passport.serializeUser((user, cb) => {
-  // store only the user id in the session
-  cb(null, user.id);
-});
-
+passport.serializeUser((user, cb) => cb(null, user.id));
 passport.deserializeUser(async (id, cb) => {
   try {
-    const rows = await sql`SELECT id, username, email FROM users WHERE id = ${id}`;
-    const user = Array.isArray(rows) && rows.length ? rows[0] : rows?.rows?.[0] ?? null;
-    cb(null, user);
+    const r = await sql`SELECT id, username, email, role FROM users WHERE id = ${id} LIMIT 1`;
+    const user = Array.isArray(r) ? r[0] : r?.rows?.[0];
+    cb(null, user || false);
   } catch (err) {
     cb(err);
   }
 });
 
-app.post(
-  "/login",
-  passport.authenticate("local", {
-    successRedirect: "/dashboard",
-    failureRedirect: "/login",
-  })
-);
+/* -----------------------
+   Helper functions
+   ----------------------- */
+function ensureAuthenticated(req, res, next) {
+  if (req.isAuthenticated && req.isAuthenticated()) return next();
+  return res.redirect("/login");
+}
+function ensureRole(requiredRole) {
+  // role 1 = admin, 2 = instructor, 3 = learner
+  return (req, res, next) => {
+    if (!req.isAuthenticated || !req.isAuthenticated()) return res.redirect("/login");
+    const role = Number(req.user?.role ?? 0);
+    if (role === requiredRole || role === 1) return next(); // admin can do everything
+    return res.status(403).send("Forbidden");
+  };
+}
+function rows(result) {
+  if (!result) return [];
+  if (Array.isArray(result)) return result;
+  if (result.rows) return result.rows;
+  return [];
+}
 
-app.listen(port, () => {
-  console.log(`Server is running on port: ${port}`);
+/* -----------------------
+   Database initialization - simple beginner-friendly schema
+   All tables created with IF NOT EXISTS so running the server is safe.
+   ----------------------- */
+async function initDB() {
+  try {
+    // users
+    await sql`
+      CREATE TABLE IF NOT EXISTS users (
+        id SERIAL PRIMARY KEY,
+        email VARCHAR(255) UNIQUE NOT NULL,
+        username VARCHAR(255) NOT NULL,
+        password VARCHAR(255) NOT NULL,
+        role INTEGER NOT NULL DEFAULT 3,
+        created_at TIMESTAMP DEFAULT NOW()
+      )
+    `;
+
+    // courses
+    await sql`
+      CREATE TABLE IF NOT EXISTS courses (
+        id SERIAL PRIMARY KEY,
+        title TEXT NOT NULL,
+        description TEXT,
+        link TEXT,
+        created_at TIMESTAMP DEFAULT NOW()
+      )
+    `;
+
+    // enrollments (learner <-> courses)
+    await sql`
+      CREATE TABLE IF NOT EXISTS enrollments (
+        id SERIAL PRIMARY KEY,
+        course_id INTEGER REFERENCES courses(id) ON DELETE CASCADE,
+        learner_id INTEGER REFERENCES users(id) ON DELETE CASCADE,
+        enrolled_at TIMESTAMP DEFAULT NOW(),
+        UNIQUE(course_id, learner_id)
+      )
+    `;
+
+    // instructor_courses (assign instructor to course)
+    await sql`
+      CREATE TABLE IF NOT EXISTS instructor_courses (
+        id SERIAL PRIMARY KEY,
+        course_id INTEGER REFERENCES courses(id) ON DELETE CASCADE,
+        instructor_id INTEGER REFERENCES users(id) ON DELETE CASCADE,
+        assigned_at TIMESTAMP DEFAULT NOW(),
+        UNIQUE(course_id, instructor_id)
+      )
+    `;
+
+    // instructor_learner (assign instructor to learner)
+    await sql`
+      CREATE TABLE IF NOT EXISTS instructor_learner (
+        id SERIAL PRIMARY KEY,
+        instructor_id INTEGER REFERENCES users(id) ON DELETE CASCADE,
+        learner_id INTEGER REFERENCES users(id) ON DELETE CASCADE,
+        assigned_at TIMESTAMP DEFAULT NOW(),
+        UNIQUE(instructor_id, learner_id)
+      )
+    `;
+
+    // attendance (one row per learner/course/date)
+    await sql`
+      CREATE TABLE IF NOT EXISTS attendance (
+        id SERIAL PRIMARY KEY,
+        learner_id INTEGER REFERENCES users(id) ON DELETE CASCADE,
+        course_id INTEGER REFERENCES courses(id) ON DELETE CASCADE,
+        date DATE NOT NULL,
+        status CHAR(1) NOT NULL DEFAULT 'A', -- A = Absent, B = Present (beginner friendly)
+        created_at TIMESTAMP DEFAULT NOW(),
+        UNIQUE(learner_id, course_id, date)
+      )
+    `;
+
+    // assignments (created by instructor)
+    await sql`
+      CREATE TABLE IF NOT EXISTS assignments (
+        id SERIAL PRIMARY KEY,
+        course_id INTEGER REFERENCES courses(id) ON DELETE CASCADE,
+        instructor_id INTEGER REFERENCES users(id) ON DELETE SET NULL,
+        title TEXT NOT NULL,
+        description TEXT,
+        file_link TEXT,
+        file_original_name TEXT,
+        external_link TEXT,
+        due_date DATE,
+        created_at TIMESTAMP DEFAULT NOW()
+      )
+    `;
+
+    // optional assignment_targets: which learners were targeted for the assignment
+    await sql`
+      CREATE TABLE IF NOT EXISTS assignment_targets (
+        id SERIAL PRIMARY KEY,
+        assignment_id INTEGER REFERENCES assignments(id) ON DELETE CASCADE,
+        learner_id INTEGER REFERENCES users(id) ON DELETE CASCADE,
+        UNIQUE(assignment_id, learner_id)
+      )
+    `;
+
+    // submissions (learner submits for assignment)
+    await sql`
+      CREATE TABLE IF NOT EXISTS submissions (
+        id SERIAL PRIMARY KEY,
+        assignment_id INTEGER REFERENCES assignments(id) ON DELETE CASCADE,
+        learner_id INTEGER REFERENCES users(id) ON DELETE CASCADE,
+        file_link TEXT,
+        file_original_name TEXT,
+        external_link TEXT,
+        submitted_at TIMESTAMP DEFAULT NOW(),
+        graded BOOLEAN DEFAULT FALSE,
+        grade TEXT,
+        feedback TEXT,
+        UNIQUE(assignment_id, learner_id)
+      )
+    `;
+
+    // materials
+    await sql`
+      CREATE TABLE IF NOT EXISTS materials (
+        id SERIAL PRIMARY KEY,
+        course_id INTEGER REFERENCES courses(id) ON DELETE CASCADE,
+        instructor_id INTEGER REFERENCES users(id) ON DELETE SET NULL,
+        title TEXT NOT NULL,
+        description TEXT,
+        file_link TEXT,
+        file_original_name TEXT,
+        external_link TEXT,
+        created_at TIMESTAMP DEFAULT NOW()
+      )
+    `;
+
+    // meetings (google meet link + time)
+    await sql`
+      CREATE TABLE IF NOT EXISTS meetings (
+        id SERIAL PRIMARY KEY,
+        course_id INTEGER REFERENCES courses(id) ON DELETE CASCADE,
+        instructor_id INTEGER REFERENCES users(id) ON DELETE SET NULL,
+        link TEXT,
+        start_time TIMESTAMP,
+        created_at TIMESTAMP DEFAULT NOW()
+      )
+    `;
+
+      await sql`ALTER TABLE submissions ADD COLUMN IF NOT EXISTS graded BOOLEAN DEFAULT FALSE`;
+    await sql`ALTER TABLE submissions ADD COLUMN IF NOT EXISTS grade TEXT`;
+    await sql`ALTER TABLE submissions ADD COLUMN IF NOT EXISTS feedback TEXT`;
+
+    // Optional fields used elsewhere
+    await sql`ALTER TABLE submissions ADD COLUMN IF NOT EXISTS file_original_name TEXT`;
+    await sql`ALTER TABLE submissions ADD COLUMN IF NOT EXISTS external_link TEXT`;
+
+    // Additional safe ensures (no-op if present)
+    await sql`ALTER TABLE assignments ADD COLUMN IF NOT EXISTS file_link TEXT`;
+    await sql`ALTER TABLE materials ADD COLUMN IF NOT EXISTS file_link TEXT`;
+
+    // course_progress
+    await sql`
+      CREATE TABLE IF NOT EXISTS course_progress (
+        id SERIAL PRIMARY KEY,
+        course_id INTEGER REFERENCES courses(id) ON DELETE CASCADE,
+        user_id INTEGER REFERENCES users(id) ON DELETE CASCADE,
+        progress_percent INTEGER DEFAULT 0,
+        updated_at TIMESTAMP DEFAULT NOW(),
+        UNIQUE(course_id, user_id)
+      )
+    `;
+
+    // certificate requests
+    await sql`
+      CREATE TABLE IF NOT EXISTS certificate_requests (
+        id SERIAL PRIMARY KEY,
+        learner_id INTEGER REFERENCES users(id) ON DELETE CASCADE,
+        course_id INTEGER REFERENCES courses(id) ON DELETE CASCADE,
+        requested_at TIMESTAMP DEFAULT NOW(),
+        status TEXT DEFAULT 'requested'
+      )
+    `;
+
+    console.log("Database initialized");
+  } catch (err) {
+    console.error("DB init error", err);
+    throw err;
+  }
+}
+
+await initDB().catch((e) => console.error(e));
+
+/* -----------------------
+   Small query helpers
+   ----------------------- */
+async function fetchCourses() {
+  const r = await sql`SELECT id, title, description, link FROM courses ORDER BY id DESC`;
+  return rows(r);
+}
+async function fetchLearners() {
+  const r = await sql`SELECT id, username, email FROM users WHERE role = 3 ORDER BY id DESC`;
+  return rows(r);
+}
+async function fetchInstructors() {
+  const r = await sql`SELECT id, username, email FROM users WHERE role = 2 ORDER BY id DESC`;
+  return rows(r);
+}
+async function fetchEnrollmentsForUser(userId) {
+  const r = await sql`
+    SELECT c.*
+    FROM courses c
+    JOIN enrollments e ON e.course_id = c.id
+    WHERE e.learner_id = ${userId}
+    ORDER BY c.id DESC
+  `;
+  return rows(r);
+}
+async function fetchAssignmentsForLearner(learnerId) {
+  // assignments that target the learner OR where the learner is enrolled in the course
+  const r = await sql`
+    SELECT DISTINCT a.*, u.username as instructor_name
+    FROM assignments a
+    LEFT JOIN users u ON u.id = a.instructor_id
+    LEFT JOIN assignment_targets at ON at.assignment_id = a.id
+    LEFT JOIN enrollments e ON e.course_id = a.course_id AND e.learner_id = ${learnerId}
+    WHERE at.learner_id = ${learnerId} OR e.learner_id = ${learnerId}
+    ORDER BY a.created_at DESC
+  `;
+  return rows(r);
+}
+async function fetchSubmissionsForInstructor(instructorId) {
+  const r = await sql`
+    SELECT s.*, a.title as assignment_title, u.username as learner_name, c.title as course_title, a.instructor_id
+    FROM submissions s
+    LEFT JOIN assignments a ON a.id = s.assignment_id
+    LEFT JOIN users u ON u.id = s.learner_id
+    LEFT JOIN courses c ON c.id = a.course_id
+    WHERE a.instructor_id = ${instructorId}
+    ORDER BY s.submitted_at DESC
+  `;
+  return rows(r);
+}
+async function fetchMaterialsForCourse(courseId) {
+  const r = await sql`SELECT * FROM materials WHERE course_id = ${courseId} ORDER BY created_at DESC`;
+  return rows(r);
+}
+async function fetchMeetingsForCourse(courseId) {
+  const r = await sql`SELECT * FROM meetings WHERE course_id = ${courseId} ORDER BY start_time DESC`;
+  return rows(r);
+}
+async function fetchAttendanceRecent(limit = 200) {
+  const r = await sql`
+    SELECT a.*, u.username as learner_name, c.title as course_title
+    FROM attendance a
+    LEFT JOIN users u ON u.id = a.learner_id
+    LEFT JOIN courses c ON c.id = a.course_id
+    ORDER BY a.date DESC
+    LIMIT ${limit}
+  `;
+  return rows(r);
+}
+async function fetchCertificateRequests() {
+  const r = await sql`
+    SELECT cr.*, u.username as learner_name, c.title as course_title
+    FROM certificate_requests cr
+    LEFT JOIN users u ON u.id = cr.learner_id
+    LEFT JOIN courses c ON c.id = cr.course_id
+    ORDER BY cr.requested_at DESC
+  `;
+  return rows(r);
+}
+
+/* -----------------------
+   Public routes
+   ----------------------- */
+app.get("/", async (req, res) => {
+  try {
+    const courses = await fetchCourses();
+    res.render("index", { user: req.user || null, courses: rows(courses) });
+  } catch (err) {
+    console.error("/", err);
+    res.status(500).send("Server error");
+  }
+});
+
+/* -----------------------
+   Auth: signup, login, logout
+   Beginner-friendly simple forms, password hashed
+   ----------------------- */
+app.get("/signup", (req, res) => res.render("signup", { error: null }));
+app.post("/signup", async (req, res) => {
+  const username = (req.body.username || "").trim();
+  const email = (req.body.email || "").trim().toLowerCase();
+  const password = req.body.password || "";
+  if (!username || !email || !password) return res.render("signup", { error: "All fields are required" });
+  if (username.length > 200 || email.length > 200) return res.render("signup", { error: "Input too long" });
+  try {
+    const existing = await sql`SELECT id FROM users WHERE email = ${email}`;
+    if (rows(existing).length) return res.render("signup", { error: "Email already in use" });
+    const hash = await bcrypt.hash(password, saltRounds);
+    const inserted = await sql`
+      INSERT INTO users (email, username, password, role)
+      VALUES (${email}, ${username}, ${hash}, ${3})
+      RETURNING id, email, username, role
+    `;
+    const newUser = rows(inserted)[0];
+    req.login({ id: newUser.id, username: newUser.username, email: newUser.email, role: Number(newUser.role) }, (err) => {
+      if (err) return res.render("signup", { error: "Could not log you in" });
+      return res.redirect("/dashboard");
+    });
+  } catch (err) {
+    console.error("Signup error", err);
+    return res.render("signup", { error: "Server error" });
+  }
+});
+
+app.get("/login", (req, res) => res.render("login", { error: null }));
+app.post("/login", passport.authenticate("local", { successRedirect: "/dashboard", failureRedirect: "/login" }));
+
+app.get("/logout", (req, res, next) => {
+  req.logout((err) => {
+    if (err) return next(err);
+    req.session.destroy(() => res.redirect("/login"));
+  });
+});
+
+/* -----------------------
+   Dashboard routing by role
+   ----------------------- */
+app.get("/dashboard", ensureAuthenticated, (req, res) => {
+  const role = Number(req.user.role ?? 3);
+  if (role === 1) return res.redirect("/admin-dashboard");
+  if (role === 2) return res.redirect("/instructor-dashboard");
+  return res.redirect("/learner-dashboard");
+});
+
+/* -----------------------
+   Admin dashboard
+   - create course
+   - assign learner/course, instructor/course, instructor/learner
+   - view certificate requests & attendance
+   ----------------------- */
+app.get("/admin-dashboard", ensureAuthenticated, ensureRole(1), async (req, res) => {
+  try {
+    const learners = await fetchLearners();
+    const instructors = await fetchInstructors();
+    const courses = await fetchCourses();
+    const attendance = await fetchAttendanceRecent();
+    const certRequests = await fetchCertificateRequests();
+    res.render("adminDashboard", {
+      user: req.user,
+      learners,
+      instructors,
+      courses,
+      attendance,
+      certificateRequests: certRequests,
+    });
+  } catch (err) {
+    console.error("admin-dashboard", err);
+    res.status(500).send("Server error");
+  }
+});
+
+app.post("/admin/courses", ensureAuthenticated, ensureRole(1), async (req, res) => {
+  try {
+    const title = (req.body.title || "").trim();
+    const description = (req.body.description || "").trim() || null;
+    const link = (req.body.link || "").trim() || null;
+    if (!title) return res.status(400).send("Missing title");
+    await sql`INSERT INTO courses (title, description, link) VALUES (${title}, ${description}, ${link})`;
+    return res.redirect("/admin-dashboard");
+  } catch (err) {
+    console.error("create course", err);
+    res.status(500).send("Server error");
+  }
+});
+
+// Add /instructor/update-progress route (place this near other instructor routes)
+app.post("/instructor/update-progress", ensureAuthenticated, ensureRole(2), async (req, res) => {
+  try {
+    const instructorId = Number(req.user?.id);
+    const courseId = Number(req.body.course_id || req.body.courseId || 0);
+    const userId = Number(req.body.user_id || req.body.userId || 0);
+    const percent = Math.max(0, Math.min(100, Number(req.body.progress_percent || req.body.percent || 0)));
+
+    if (!courseId || !userId || Number.isNaN(percent)) {
+      return res.status(400).send("Missing or invalid course_id, user_id or progress_percent");
+    }
+
+    // Optional permission check: instructor must be assigned to the course unless admin
+    const assigned = await sql`SELECT 1 FROM instructor_courses WHERE course_id = ${courseId} AND instructor_id = ${instructorId}`;
+    if (!rows(assigned).length && Number(req.user?.role) !== 1) {
+      return res.status(403).send("Not assigned to this course");
+    }
+
+    // Upsert progress (insert or update existing row)
+    await sql`
+      INSERT INTO course_progress (course_id, user_id, progress_percent, updated_at)
+      VALUES (${courseId}, ${userId}, ${percent}, NOW())
+      ON CONFLICT (course_id, user_id)
+      DO UPDATE SET progress_percent = EXCLUDED.progress_percent, updated_at = NOW()
+    `;
+
+    // Redirect back to instructor dashboard (or return JSON if you prefer)
+    return res.redirect("/instructor-dashboard");
+  } catch (err) {
+    console.error("POST /instructor/update-progress error:", err && err.stack ? err.stack : err);
+    return res.status(500).send("Server error");
+  }
+});
+
+// enroll learner
+app.post("/admin/enroll", ensureAuthenticated, ensureRole(1), async (req, res) => {
+  try {
+    const learnerId = Number(req.body.learner_id);
+    const courseId = Number(req.body.course_id);
+    if (!learnerId || !courseId) return res.status(400).send("Missing data");
+    await sql`
+      INSERT INTO enrollments (course_id, learner_id)
+      VALUES (${courseId}, ${learnerId})
+      ON CONFLICT (course_id, learner_id) DO NOTHING
+    `;
+    return res.redirect("/admin-dashboard");
+  } catch (err) {
+    console.error("enroll", err);
+    res.status(500).send("Server error");
+  }
+});
+
+// assign instructor to course
+app.post("/admin/assign-instructor-course", ensureAuthenticated, ensureRole(1), async (req, res) => {
+  try {
+    const instructorId = Number(req.body.instructor_id);
+    const courseId = Number(req.body.course_id);
+    if (!instructorId || !courseId) return res.status(400).send("Missing data");
+    await sql`
+      INSERT INTO instructor_courses (course_id, instructor_id)
+      VALUES (${courseId}, ${instructorId})
+      ON CONFLICT (course_id, instructor_id) DO NOTHING
+    `;
+    return res.redirect("/admin-dashboard");
+  } catch (err) {
+    console.error("assign instructor", err);
+    res.status(500).send("Server error");
+  }
+});
+
+// assign instructor to learner
+app.post("/admin/assign-instructor-learner", ensureAuthenticated, ensureRole(1), async (req, res) => {
+  try {
+    const instructorId = Number(req.body.instructor_id);
+    const learnerId = Number(req.body.learner_id);
+    if (!instructorId || !learnerId) return res.status(400).send("Missing data");
+    await sql`
+      INSERT INTO instructor_learner (instructor_id, learner_id)
+      VALUES (${instructorId}, ${learnerId})
+      ON CONFLICT (instructor_id, learner_id) DO NOTHING
+    `;
+    return res.redirect("/admin-dashboard");
+  } catch (err) {
+    console.error("assign instructor learner", err);
+    res.status(500).send("Server error");
+  }
+});
+
+// update certificate request status
+app.post("/admin/certificate-update", ensureAuthenticated, ensureRole(1), async (req, res) => {
+  try {
+    const id = Number(req.body.request_id);
+    const status = (req.body.status || "").trim();
+    if (!id || !["requested", "issued"].includes(status)) return res.status(400).send("Invalid input");
+    await sql`UPDATE certificate_requests SET status = ${status} WHERE id = ${id}`;
+    return res.redirect("/admin-dashboard");
+  } catch (err) {
+    console.error("certificate update", err);
+    res.status(500).send("Server error");
+  }
+});
+
+/* -----------------------
+   Instructor dashboard
+   - create assignment (optional file, link), optionally target learners
+   - create materials
+   - create meeting (google meet link)
+   - record attendance
+   - view submissions to grade
+   ----------------------- */
+app.get("/instructor-dashboard", ensureAuthenticated, ensureRole(2), async (req, res) => {
+  try {
+    const instructorId = req.user.id;
+    // courses assigned to this instructor
+    const coursesRaw = await sql`SELECT c.* FROM courses c JOIN instructor_courses ic ON ic.course_id = c.id WHERE ic.instructor_id = ${instructorId} ORDER BY c.id DESC`;
+    const courses = rows(coursesRaw);
+
+    // learners list for forms
+    const learners = await fetchLearners();
+
+    // assignments by this instructor
+    const assignments = await sql`SELECT a.*, c.title as course_title FROM assignments a LEFT JOIN courses c ON c.id = a.course_id WHERE a.instructor_id = ${instructorId} ORDER BY a.created_at DESC`;
+
+    // materials by this instructor
+    const materials = await sql`SELECT m.*, c.title as course_title FROM materials m LEFT JOIN courses c ON c.id = m.course_id WHERE m.instructor_id = ${instructorId} ORDER BY m.created_at DESC`;
+
+    // meetings by this instructor
+    const meetings = await sql`SELECT m.*, c.title as course_title FROM meetings m LEFT JOIN courses c ON c.id = m.course_id WHERE m.instructor_id = ${instructorId} ORDER BY m.start_time DESC`;
+
+    // submissions to grade
+    const submissionsToGrade = await fetchSubmissionsForInstructor(instructorId);
+
+    // recent attendance for admin/instructor overview
+    const attendance = await fetchAttendanceRecent();
+
+    res.render("instructorDashboard", {
+      user: req.user,
+      courses,
+      learners,
+      assignments: rows(assignments),
+      materials: rows(materials),
+      meetings: rows(meetings),
+      submissions: submissionsToGrade,
+      attendance,
+    });
+  } catch (err) {
+    console.error("instructor-dashboard", err);
+    res.status(500).send("Server error");
+  }
+});
+
+// Create assignment (optional file upload). instructor can choose target learners (array of learner ids)
+app.post("/instructor/create-assignment", ensureAuthenticated, ensureRole(2), upload.single("file"), async (req, res) => {
+  try {
+    const instructorId = req.user.id;
+    const courseId = Number(req.body.course_id);
+    const title = (req.body.title || "").trim();
+    const description = (req.body.description || "").trim() || null;
+    const external_link = (req.body.external_link || "").trim() || null;
+    const due_date = req.body.due_date || null;
+
+    if (!title || !courseId) return res.status(400).send("Missing title or course");
+
+    let file_link = null;
+    let file_original_name = null;
+    if (req.file) {
+      file_link = `/uploads/${req.file.filename}`;
+      file_original_name = req.file.originalname || null;
+    }
+
+    const inserted = await sql`
+      INSERT INTO assignments (course_id, instructor_id, title, description, file_link, file_original_name, external_link, due_date)
+      VALUES (${courseId}, ${instructorId}, ${title}, ${description}, ${file_link}, ${file_original_name}, ${external_link}, ${due_date})
+      RETURNING id
+    `;
+    const assignmentId = rows(inserted)[0]?.id;
+
+    // if instructor provided targeted learner ids (array), insert into assignment_targets
+    const targets = req.body.target_learners;
+    if (assignmentId && targets) {
+      const arr = Array.isArray(targets) ? targets : [targets];
+      for (const t of arr) {
+        const learnerId = Number(t);
+        if (!Number.isNaN(learnerId)) {
+          await sql`INSERT INTO assignment_targets (assignment_id, learner_id) VALUES (${assignmentId}, ${learnerId}) ON CONFLICT DO NOTHING`;
+        }
+      }
+    }
+
+    return res.redirect("/instructor-dashboard");
+  } catch (err) {
+    console.error("create-assignment", err);
+    res.status(500).send("Server error");
+  }
+});
+
+// grade submission
+app.post("/instructor/grade", ensureAuthenticated, ensureRole(2), async (req, res) => {
+  try {
+    const submissionId = Number(req.body.submission_id);
+    const grade = (req.body.grade || "").trim();
+    const feedback = (req.body.feedback || "").trim() || null;
+    if (!submissionId || !grade) return res.status(400).send("Missing data");
+
+    // Optionally check permission (instructor owns assignment). Simple check: instructor or admin allowed.
+    const check = await sql`
+      SELECT s.id
+      FROM submissions s
+      LEFT JOIN assignments a ON a.id = s.assignment_id
+      WHERE s.id = ${submissionId} AND (a.instructor_id = ${req.user.id} OR ${req.user.id} = 1)
+      LIMIT 1
+    `;
+    if (!rows(check).length) return res.status(403).send("Not allowed to grade");
+
+    await sql`UPDATE submissions SET graded = TRUE, grade = ${grade}, feedback = ${feedback} WHERE id = ${submissionId}`;
+    return res.redirect("/instructor-dashboard");
+  } catch (err) {
+    console.error("grade", err);
+    res.status(500).send("Server error");
+  }
+});
+
+// create materials (optional upload)
+app.post("/instructor/create-material", ensureAuthenticated, ensureRole(2), upload.single("file"), async (req, res) => {
+  try {
+    const instructorId = req.user.id;
+    const courseId = Number(req.body.course_id);
+    const title = (req.body.title || "").trim();
+    const description = (req.body.description || "").trim() || null;
+    const external_link = (req.body.external_link || "").trim() || null;
+    if (!title || !courseId) return res.status(400).send("Missing title or course");
+
+    let file_link = null;
+    let file_original_name = null;
+    if (req.file) {
+      file_link = `/uploads/${req.file.filename}`;
+      file_original_name = req.file.originalname || null;
+    }
+
+    await sql`
+      INSERT INTO materials (course_id, instructor_id, title, description, file_link, file_original_name, external_link)
+      VALUES (${courseId}, ${instructorId}, ${title}, ${description}, ${file_link}, ${file_original_name}, ${external_link})
+    `;
+    return res.redirect("/instructor-dashboard");
+  } catch (err) {
+    console.error("create material", err);
+    res.status(500).send("Server error");
+  }
+});
+
+// create meeting (google meet link)
+app.post("/instructor/create-meeting", ensureAuthenticated, ensureRole(2), async (req, res) => {
+  try {
+    const instructorId = req.user.id;
+    const courseId = Number(req.body.course_id);
+    const link = (req.body.link || "").trim();
+    const start_time = req.body.start_time || null;
+    if (!courseId || !link || !start_time) return res.status(400).send("Missing data");
+    await sql`INSERT INTO meetings (course_id, instructor_id, link, start_time) VALUES (${courseId}, ${instructorId}, ${link}, ${start_time})`;
+    return res.redirect("/instructor-dashboard");
+  } catch (err) {
+    console.error("create meeting", err);
+    res.status(500).send("Server error");
+  }
+});
+
+// record attendance for many learners on a given date
+app.post("/instructor/record-attendance", ensureAuthenticated, ensureRole(2), async (req, res) => {
+  try {
+    const instructorId = req.user.id;
+    const courseId = Number(req.body.course_id);
+    const date = req.body.date;
+    // expected body: statuses like status_<learnerId> = 'A' or 'B'
+    if (!courseId || !date) return res.status(400).send("Missing course or date");
+
+    // For simple beginner UI, instructor sends statuses in the form
+    // Iterate keys and look for status_*
+    for (const key of Object.keys(req.body)) {
+      const match = key.match(/^status_(\d+)$/);
+      if (!match) continue;
+      const learnerId = Number(match[1]);
+      const statusRaw = (req.body[key] || "").toUpperCase().trim();
+      const status = statusRaw === "B" ? "B" : "A"; // default to Absent if not B
+      await sql`
+        INSERT INTO attendance (learner_id, course_id, date, status)
+        VALUES (${learnerId}, ${courseId}, ${date}, ${status})
+        ON CONFLICT (learner_id, course_id, date)
+        DO UPDATE SET status = EXCLUDED.status, created_at = NOW()
+      `;
+    }
+
+    return res.redirect("/instructor-dashboard");
+  } catch (err) {
+    console.error("record attendance", err);
+    res.status(500).send("Server error");
+  }
+});
+
+/* -----------------------
+   Learner dashboard
+   - view enrolled courses, materials, meetings
+   - submit assignment (upload or link) -> appears to instructor for grading
+   - request certificate (only if progress=100)
+   ----------------------- */
+app.get("/learner-dashboard", ensureAuthenticated, ensureRole(3), async (req, res) => {
+  try {
+    const userId = req.user.id;
+    const courses = await fetchEnrollmentsForUser(userId);
+    const assignments = await fetchAssignmentsForLearner(userId);
+    const submissions = await sql`SELECT s.*, a.title as assignment_title FROM submissions s LEFT JOIN assignments a ON a.id = s.assignment_id WHERE s.learner_id = ${userId} ORDER BY s.submitted_at DESC`;
+    const progress = await sql`SELECT * FROM course_progress WHERE user_id = ${userId}`;
+    // For each enrolled course, fetch materials and meetings (simple demo)
+    const courseIds = rows(courses).map((c) => c.id);
+    const materials = [];
+    const meetings = [];
+    for (const cid of courseIds) {
+      const m = await fetchMaterialsForCourse(cid);
+      const mt = await fetchMeetingsForCourse(cid);
+      materials.push(...m);
+      meetings.push(...mt);
+    }
+    res.render("learnerDashboard", {
+      user: req.user,
+      courses: rows(courses),
+      assignments: rows(assignments),
+      submissions: rows(submissions),
+      progress: rows(progress),
+      materials,
+      meetings,
+      learners: [req.user], // simple select so learner can choose themselves when submitting
+    });
+  } catch (err) {
+    console.error("learner-dashboard", err);
+    res.status(500).send("Server error");
+  }
+});
+
+// submit assignment (file optional)
+app.post("/learner/submit-assignment", ensureAuthenticated, ensureRole(3), upload.single("file"), async (req, res) => {
+  try {
+    const learnerId = req.user.id;
+    const assignmentId = Number(req.body.assignment_id);
+    const external_link = (req.body.external_link || "").trim() || null;
+    if (!assignmentId) return res.status(400).send("Missing assignment");
+    // prevent duplicate submissions via unique constraint
+    const exists = await sql`SELECT id FROM submissions WHERE assignment_id = ${assignmentId} AND learner_id = ${learnerId}`;
+    if (rows(exists).length) return res.status(409).send("Already submitted");
+
+    let file_link = null;
+    let file_original_name = null;
+    if (req.file) {
+      file_link = `/uploads/${req.file.filename}`;
+      file_original_name = req.file.originalname || null;
+    }
+
+    await sql`
+      INSERT INTO submissions (assignment_id, learner_id, file_link, file_original_name, external_link)
+      VALUES (${assignmentId}, ${learnerId}, ${file_link}, ${file_original_name}, ${external_link})
+    `;
+    return res.redirect("/learner-dashboard");
+  } catch (err) {
+    console.error("submit assignment", err);
+    res.status(500).send("Server error");
+  }
+});
+
+// request certificate
+app.post("/learner/request-certificate", ensureAuthenticated, ensureRole(3), async (req, res) => {
+  try {
+    const learnerId = req.user.id;
+    const courseId = Number(req.body.course_id);
+    if (!courseId) return res.status(400).send("Missing course");
+
+    // Check progress
+    const progRes = await sql`SELECT progress_percent FROM course_progress WHERE course_id = ${courseId} AND user_id = ${learnerId} LIMIT 1`;
+    const prog = rows(progRes)[0];
+    const percent = prog ? Number(prog.progress_percent || 0) : 0;
+    if (percent < 100) return res.status(400).send("Course not complete (100% required)");
+
+    await sql`
+      INSERT INTO certificate_requests (learner_id, course_id)
+      VALUES (${learnerId}, ${courseId})
+      ON CONFLICT DO NOTHING
+    `;
+
+    return res.redirect("/learner-dashboard");
+  } catch (err) {
+    console.error("request certificate", err);
+    res.status(500).send("Server error");
+  }
+});
+
+/* -----------------------
+   Start server
+   ----------------------- */
+app.listen(PORT, () => {
+  console.log(`Server listening on http://localhost:${PORT}`);
 });

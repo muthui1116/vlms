@@ -1,10 +1,51 @@
-section{
-    margin: 30px 50px;
+/* Custom styles to complement Bootstrap and give a cohesive look */
+
+/* Body and container tweaks */
+body {
+  background: #f8fafc;
+  color: #212529;
+  font-family: system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial;
 }
 
-img{
-  
-    height: 40px;
+/* Hero */
+.hero {
+  background: linear-gradient(180deg, #ffffff 0%, #f3f6f9 100%);
+  border-radius: 8px;
+  padding: 2rem;
 }
 
+/* Cards */
+.card {
+  border-radius: 8px;
+}
+
+/* Auth card */
+.auth-card {
+  max-width: 460px;
+  width: 100%;
+}
+
+/* Google button */
+.google-btn {
+  background: #fff;
+  border: 1px solid #e0e0e0;
+  color: #202124;
+}
+.google-btn .fab { color: #d93025; }
+
+/* Manage users table small adjustments */
+.table td, .table th {
+  vertical-align: middle;
+}
+
+/* Footer */
+footer {
+  background: #ffffff;
+  box-shadow: 0 -1px 0 rgba(0,0,0,0.02);
+}
+
+/* Small responsive fixes */
+@media (max-width: 576px) {
+  .navbar-brand span { display: none; }
+}
 

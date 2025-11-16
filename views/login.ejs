@@ -1,87 +1,23 @@
 <%- include('partials/header.ejs') %>
 
-<style>
-  .auth-card {
-    max-width: 420px;
-    width: 100%;
-  }
-  .google-btn {
-    background: #fff;
-    border: 1px solid #e0e0e0;
-    color: #202124;
-  }
-  .google-btn .fab { color: #d93025; }
-  .divider {
-    height: 1px;
-    background: #e9ecef;
-    margin: .75rem 0 1rem;
-  }
-</style>
-
-<main class="d-flex align-items-center justify-content-center" style="min-height:70vh;">
-  <div class="card auth-card shadow-sm border-0 rounded">
-    <div class="card-body p-4">
-      <form action="/login" method="POST" role="form" aria-label="Sign in form" novalidate>
-        <h5 class="mb-3 text-center">Sign in</h5>
-
-        <div class="form-floating mb-3">
-          <input
-            id="email"
-            type="email"
-            name="email"
-            class="form-control"
-            placeholder="you@example.com"
-            required
-            aria-required="true"
-          />
-          <label for="email">Email</label>
-        </div>
-
-        <div class="form-floating mb-3">
-          <input
-            id="password"
-            type="password"
-            name="password"
-            class="form-control"
-            placeholder="Password"
-            required
-            aria-required="true"
-          />
-          <label for="password">Password</label>
-        </div>
-
-        <div class="d-grid mb-3">
-          <button type="submit" class="btn btn-primary">Sign in</button>
-        </div>
-
-        <div class="divider" aria-hidden="true"></div>
-
-        <div class="mb-3">
-          <a
-            class="btn google-btn w-100 d-flex align-items-center justify-content-center gap-2"
-            href="/auth/google"
-            role="button"
-            aria-label="Sign in with Google"
-          >
-            <i class="fab fa-google"></i>
-            <span>Sign in with Google</span>
-          </a>
-        </div>
-
-        <div class="d-grid mt-2">
-          <a
-            href="https://prowessity.com/"
-            class="btn btn-outline-secondary"
-            role="button"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            Enroll Now
-          </a>
-        </div>
-      </form>
+<div class="card auth-card p-4">
+  <h5 class="mb-3">Sign in</h5>
+  <% if (error) { %>
+    <div class="alert alert-danger"><%= error %></div>
+  <% } %>
+  <form action="/login" method="POST">
+    <div class="mb-2">
+      <label class="form-label small">Email</label>
+      <input type="email" name="email" class="form-control" required />
     </div>
-  </div>
-</main>
+    <div class="mb-2">
+      <label class="form-label small">Password</label>
+      <input type="password" name="password" class="form-control" required />
+    </div>
+    <div class="d-grid">
+      <button class="btn btn-primary">Sign in</button>
+    </div>
+  </form>
+</div>
 
 <%- include('partials/footer.ejs') %>
