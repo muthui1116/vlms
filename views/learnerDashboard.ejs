@@ -1,130 +1,193 @@
 <%- include('partials/header.ejs') %>
 
-<h4>Learner dashboard</h4>
+<h4 class="mb-4">Learner dashboard</h4>
 
-<div class="row">
-  <div class="col-md-6">
-    <div class="card p-3 mb-3">
-      <h6>Your courses</h6>
-      <% if (!courses || courses.length === 0) { %>
-        <div class="alert alert-info">You are not enrolled in any course yet.</div>
-      <% } else { %>
-        <ul class="list-group">
-          <% courses.forEach(c => { %>
-            <li class="list-group-item d-flex justify-content-between align-items-center">
-              <div>
-                <strong><%= c.title %></strong><br/>
-                <% if (c.description) { %><small class="text-muted"><%= c.description %></small><% } %>
-              </div>
-              <div>
-                <% if (c.link) { %>
-                  <a class="btn btn-sm btn-outline-primary" href="<%= c.link %>" target="_blank">Open</a>
-                <% } %>
-              </div>
-            </li>
-          <% }) %>
-        </ul>
-      <% } %>
+<div class="row g-4">
+  <div class="col-lg-6">
+    <!-- Courses + Progress -->
+    <div class="card shadow-sm mb-3">
+      <div class="card-body">
+        <h6 class="card-title">Your courses</h6>
+        <% if (!courses || courses.length === 0) { %>
+          <div class="alert alert-info mb-0">You are not enrolled in any course yet.</div>
+        <% } else { %>
+          <ul class="list-group list-group-flush">
+            <% courses.forEach(c => { %>
+              <% 
+                // find progress entry for this learner & course
+                const prog = (progress || []).find(p => Number(p.course_id) === Number(c.id));
+                const percent = prog ? Number(prog.progress_percent || 0) : 0;
+              %>
+              <li class="list-group-item py-3 d-flex flex-column flex-md-row justify-content-between align-items-start">
+                <div class="me-3 w-100">
+                  <div class="d-flex justify-content-between align-items-start">
+                    <div>
+                      <strong class="d-block"><%= c.title %></strong>
+                      <% if (c.description) { %>
+                        <small class="text-muted d-block"><%= c.description %></small>
+                      <% } %>
+                    </div>
+
+                    <div class="text-end ms-3" style="min-width:140px;">
+                      <% if (percent > 0) { %>
+                        <div class="small text-muted mb-1">Progress</div>
+                        <div class="d-flex align-items-center gap-2">
+                          <div style="min-width:48px;"><strong><%= percent %>%</strong></div>
+                          <div class="progress w-100" style="height:8px;">
+                            <div class="progress-bar" role="progressbar" style="width: <%= percent %>%;" aria-valuenow="<%= percent %>" aria-valuemin="0" aria-valuemax="100"></div>
+                          </div>
+                        </div>
+                      <% } else { %>
+                        <div class="small text-muted">No progress yet</div>
+                      <% } %>
+                      <% if (c.link) { %>
+                        <div class="mt-2"><a class="btn btn-sm btn-outline-primary" href="<%= c.link %>" target="_blank" rel="noopener">Open</a></div>
+                      <% } %>
+                    </div>
+                  </div>
+                </div>
+              </li>
+            <% }) %>
+          </ul>
+        <% } %>
+      </div>
     </div>
 
-    <div class="card p-3">
-      <h6>Assignments</h6>
-      <% if (!assignments || assignments.length === 0) { %>
-        <div class="alert alert-info">No assignments</div>
-      <% } else { %>
-        <ul class="list-group">
-          <% assignments.forEach(a => { %>
-            <li class="list-group-item">
-              <div class="d-flex justify-content-between">
-                <div>
-                  <strong><%= a.title %></strong><br/>
-                  <small class="text-muted"><%= a.instructor_name %></small>
-                </div>
-                <div>
-                  <% const submitted = (submissions || []).find(s => Number(s.assignment_id) === Number(a.id)); %>
-                  <% if (submitted) { %>
-                    <span class="badge bg-success">Submitted</span>
-                    <% if (submitted.graded) { %>
-                      <div class="small">Grade: <strong><%= submitted.grade %></strong></div>
+    <!-- Assignments -->
+    <div class="card shadow-sm">
+      <div class="card-body">
+        <h6 class="card-title">Assignments</h6>
+        <% if (!assignments || assignments.length === 0) { %>
+          <div class="alert alert-info mb-0">No assignments</div>
+        <% } else { %>
+          <ul class="list-group list-group-flush">
+            <% assignments.forEach(a => { %>
+              <li class="list-group-item">
+                <div class="d-flex justify-content-between align-items-start">
+                  <div>
+                    <strong><%= a.title %></strong><br/>
+                    <small class="text-muted"><%= a.instructor_name %></small>
+                    <% if (a.description) { %>
+                      <div class="mt-1 small text-muted"><%= a.description %></div>
                     <% } %>
-                  <% } else { %>
-                    <button class="btn btn-primary btn-sm" data-bs-toggle="collapse" data-bs-target="#submit-<%= a.id %>">Submit</button>
-                  <% } %>
+                  </div>
+                  <div class="text-end ms-3">
+                    <% const submitted = (submissions || []).find(s => Number(s.assignment_id) === Number(a.id)); %>
+                    <% if (submitted) { %>
+                      <span class="badge bg-success">Submitted</span>
+                      <% if (submitted.graded) { %>
+                        <div class="small mt-1">Grade: <strong><%= submitted.grade %></strong></div>
+                      <% } %>
+                    <% } else { %>
+                      <button class="btn btn-primary btn-sm" data-bs-toggle="collapse" data-bs-target="#submit-<%= a.id %>" aria-expanded="false" aria-controls="submit-<%= a.id %>">Submit</button>
+                    <% } %>
+                  </div>
                 </div>
-              </div>
 
-              <div class="collapse mt-2" id="submit-<%= a.id %>">
-                <form action="/learner/submit-assignment" method="POST" enctype="multipart/form-data">
-                  <input type="hidden" name="assignment_id" value="<%= a.id %>" />
-                  <div class="mb-2">
-                    <label class="form-label small">Optional file</label>
-                    <input type="file" name="file" class="form-control" />
-                  </div>
-                  <div class="mb-2">
-                    <input name="external_link" class="form-control" placeholder="Optional external link" />
-                  </div>
-                  <div class="d-grid">
-                    <button class="btn btn-success btn-sm">Submit assignment</button>
-                  </div>
-                </form>
-              </div>
-            </li>
-          <% }) %>
-        </ul>
-      <% } %>
+                <div class="collapse mt-3" id="submit-<%= a.id %>">
+                  <form action="/learner/submit-assignment" method="POST" enctype="multipart/form-data">
+                    <input type="hidden" name="assignment_id" value="<%= a.id %>" />
+                    <div class="mb-2">
+                      <label class="form-label small">Optional file</label>
+                      <input type="file" name="file" class="form-control form-control-sm" />
+                    </div>
+                    <div class="mb-2">
+                      <input name="external_link" class="form-control form-control-sm" placeholder="Optional external link" />
+                    </div>
+                    <div class="d-grid">
+                      <button class="btn btn-success btn-sm" type="submit">Submit assignment</button>
+                    </div>
+                  </form>
+                </div>
+              </li>
+            <% }) %>
+          </ul>
+        <% } %>
+      </div>
     </div>
   </div>
 
-  <div class="col-md-6">
-    <div class="card p-3 mb-3">
-      <h6>Materials</h6>
-      <% if (!materials || materials.length === 0) { %>
-        <div class="alert alert-info">No materials yet</div>
-      <% } else { %>
-        <ul class="list-group">
-          <% materials.forEach(m => { %>
-            <li class="list-group-item">
-              <strong><%= m.title %></strong><br/>
-              <small class="text-muted"><%= m.course_title %></small><br/>
-              <% if (m.file_link) { %><a href="<%= m.file_link %>" download>Download</a><% } %>
-              <% if (m.external_link) { %> <a href="<%= m.external_link %>" target="_blank">Open link</a><% } %>
-            </li>
-          <% }) %>
-        </ul>
-      <% } %>
-    </div>
-
-    <div class="card p-3">
-      <h6>Meetings</h6>
-      <% if (!meetings || meetings.length === 0) { %>
-        <div class="alert alert-info">No meetings</div>
-      <% } else { %>
-        <% meetings.forEach(m => { %>
-          <div class="mb-2">
-            <strong><%= m.title || 'Meeting' %></strong><br/>
-            <a class="btn btn-sm btn-outline-primary" href="<%= m.link %>" target="_blank">Join</a>
-            <div class="small text-muted"><%= m.start_time %></div>
-          </div>
-        <% }) %>
-      <% } %>
-    </div>
-
-    <div class="card p-3 mt-3">
-      <h6>Request certificate</h6>
-      <form action="/learner/request-certificate" method="POST">
-        <div class="mb-2">
-          <select name="course_id" class="form-select" required>
-            <option value="">Select course</option>
-            <% (courses || []).forEach(c => { %>
-              <option value="<%= c.id %>"><%= c.title %></option>
+  <div class="col-lg-6">
+    <!-- Materials -->
+    <div class="card shadow-sm mb-3">
+      <div class="card-body">
+        <h6 class="card-title">Materials</h6>
+        <% if (!materials || materials.length === 0) { %>
+          <div class="alert alert-info mb-0">No materials yet</div>
+        <% } else { %>
+          <ul class="list-group list-group-flush">
+            <% materials.forEach(m => { %>
+              <li class="list-group-item d-flex justify-content-between align-items-center">
+                <div>
+                  <strong><%= m.title %></strong><br/>
+                  <small class="text-muted"><%= m.course_title %></small>
+                </div>
+                <div class="text-end">
+                  <% if (m.file_link) { %>
+                    <a class="btn btn-sm btn-outline-secondary me-2" href="<%= m.file_link %>" download>Download</a>
+                  <% } %>
+                  <% if (m.external_link) { %>
+                    <a class="btn btn-sm btn-outline-primary" href="<%= m.external_link %>" target="_blank" rel="noopener">Open</a>
+                  <% } %>
+                </div>
+              </li>
             <% }) %>
-          </select>
+          </ul>
+        <% } %>
+      </div>
+    </div>
+
+    <!-- Meetings -->
+    <div class="card shadow-sm mb-3">
+      <div class="card-body">
+        <h6 class="card-title">Meetings</h6>
+        <% if (!meetings || meetings.length === 0) { %>
+          <div class="alert alert-info mb-0">No meetings</div>
+        <% } else { %>
+          <% meetings.forEach(m => { %>
+            <div class="mb-3 d-flex justify-content-between align-items-center">
+              <div>
+                <strong class="d-block"><%= m.title || 'Meeting' %></strong>
+                <div class="small text-muted"><%= m.start_time %></div>
+              </div>
+              <div>
+                <a class="btn btn-sm btn-outline-primary" href="<%= m.link %>" target="_blank" rel="noopener">Join</a>
+              </div>
+            </div>
+          <% }) %>
+        <% } %>
+      </div>
+    </div>
+
+    <!-- Request certificate & summary progress -->
+    <div class="card shadow-sm">
+      <div class="card-body">
+        <h6 class="card-title">Request certificate</h6>
+        <form action="/learner/request-certificate" method="POST" class="mb-3">
+          <div class="mb-2">
+            <select name="course_id" class="form-select" required>
+              <option value="">Select course</option>
+              <% (courses || []).forEach(c => { %>
+                <option value="<%= c.id %>"><%= c.title %></option>
+              <% }) %>
+            </select>
+          </div>
+          <div class="d-grid">
+            <button class="btn btn-outline-primary btn-sm" type="submit">Request certificate</button>
+          </div>
+        </form>
+        <small class="text-muted d-block">You can only request certificate after reaching 100% progress.</small>
+
+        <% /* Optionally show a small aggregate / reminder */ %>
+        <% const anyComplete = (progress || []).some(p => Number(p.progress_percent) >= 100); %>
+        <div class="mt-3">
+          <% if (anyComplete) { %>
+            <div class="alert alert-success mb-0">You have at least one course at 100% — you may request a certificate.</div>
+          <% } else { %>
+            <div class="small text-muted mb-0">Keep completing course activities to reach 100%.</div>
+          <% } %>
         </div>
-        <div class="d-grid">
-          <button class="btn btn-outline-primary btn-sm">Request certificate</button>
-        </div>
-      </form>
-      <small class="text-muted">You can only request certificate after reaching 100% progress.</small>
+      </div>
     </div>
   </div>
 </div>

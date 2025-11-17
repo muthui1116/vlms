@@ -1,149 +1,255 @@
 <%- include('partials/header.ejs') %>
 
-<h4>Admin dashboard</h4>
-<div class="row">
-  <div class="col-md-4">
-    <div class="card mb-3 p-3">
-      <h6>Create course</h6>
-      <form action="/admin/courses" method="POST">
-        <div class="mb-2">
-          <input name="title" class="form-control" placeholder="Title" required />
-        </div>
-        <div class="mb-2">
-          <textarea name="description" class="form-control" rows="2" placeholder="Description"></textarea>
-        </div>
-        <div class="mb-2">
-          <input name="link" class="form-control" placeholder="Optional link" />
-        </div>
-        <button class="btn btn-primary btn-sm">Create</button>
-      </form>
+<h4 class="mb-4">Admin dashboard</h4>
+<div class="row g-3">
+  <div class="col-lg-4">
+    <div class="card shadow-sm mb-3">
+      <div class="card-body">
+        <h6 class="card-title">Create course</h6>
+        <form action="/admin/courses" method="POST" novalidate>
+          <div class="mb-3">
+            <input name="title" class="form-control" placeholder="Title" required />
+          </div>
+          <div class="mb-3">
+            <textarea name="description" class="form-control" rows="2" placeholder="Description"></textarea>
+          </div>
+          <div class="mb-3">
+            <input name="link" class="form-control" placeholder="Optional link" />
+          </div>
+          <div class="d-grid">
+            <button class="btn btn-primary btn-sm" type="submit">Create</button>
+          </div>
+        </form>
+      </div>
     </div>
 
-    <div class="card mb-3 p-3">
-      <h6>Enroll learner to course</h6>
-      <form action="/admin/enroll" method="POST">
-        <div class="mb-2">
-          <select name="learner_id" class="form-select" required>
-            <option value="">Select learner</option>
-            <% (learners || []).forEach(l => { %>
-              <option value="<%= l.id %>"><%= l.username %> — <%= l.email %></option>
-            <% }) %>
-          </select>
-        </div>
-        <div class="mb-2">
-          <select name="course_id" class="form-select" required>
-            <option value="">Select course</option>
-            <% (courses || []).forEach(c => { %>
-              <option value="<%= c.id %>"><%= c.title %></option>
-            <% }) %>
-          </select>
-        </div>
-        <button class="btn btn-outline-primary btn-sm">Enroll</button>
-      </form>
+    <div class="card shadow-sm mb-3">
+      <div class="card-body">
+        <h6 class="card-title">Enroll learner to course</h6>
+        <form action="/admin/enroll" method="POST" novalidate>
+          <div class="mb-2">
+            <label class="form-label small">Learner</label>
+            <select name="learner_id" class="form-select" required>
+              <option value="">Select learner</option>
+              <% (learners || []).forEach(l => { %>
+                <option value="<%= l.id %>"><%= l.username %> — <%= l.email %></option>
+              <% }) %>
+            </select>
+          </div>
+          <div class="mb-3">
+            <label class="form-label small">Course</label>
+            <select name="course_id" class="form-select" required>
+              <option value="">Select course</option>
+              <% (courses || []).forEach(c => { %>
+                <option value="<%= c.id %>"><%= c.title %></option>
+              <% }) %>
+            </select>
+          </div>
+          <div class="d-grid">
+            <button class="btn btn-outline-primary btn-sm" type="submit">Enroll</button>
+          </div>
+        </form>
+      </div>
     </div>
 
-    <div class="card mb-3 p-3">
-      <h6>Assign instructor</h6>
-      <form action="/admin/assign-instructor-course" method="POST">
-        <div class="mb-2">
-          <select name="instructor_id" class="form-select" required>
-            <option value="">Select instructor</option>
-            <% (instructors || []).forEach(i => { %>
-              <option value="<%= i.id %>"><%= i.username %> — <%= i.email %></option>
-            <% }) %>
-          </select>
-        </div>
-        <div class="mb-2">
-          <select name="course_id" class="form-select" required>
-            <option value="">Select course</option>
-            <% (courses || []).forEach(c => { %>
-              <option value="<%= c.id %>"><%= c.title %></option>
-            <% }) %>
-          </select>
-        </div>
-        <button class="btn btn-outline-primary btn-sm">Assign to course</button>
-      </form>
+    <div class="card shadow-sm mb-3">
+      <div class="card-body">
+        <h6 class="card-title">Assign instructor to course</h6>
+        <form action="/admin/assign-instructor-course" method="POST" novalidate>
+          <div class="mb-2">
+            <label class="form-label small">Instructor</label>
+            <select name="instructor_id" class="form-select" required>
+              <option value="">Select instructor</option>
+              <% (instructors || []).forEach(i => { %>
+                <option value="<%= i.id %>"><%= i.username %> — <%= i.email %></option>
+              <% }) %>
+            </select>
+          </div>
+          <div class="mb-3">
+            <label class="form-label small">Course</label>
+            <select name="course_id" class="form-select" required>
+              <option value="">Select course</option>
+              <% (courses || []).forEach(c => { %>
+                <option value="<%= c.id %>"><%= c.title %></option>
+              <% }) %>
+            </select>
+          </div>
+          <div class="d-grid">
+            <button class="btn btn-outline-primary btn-sm" type="submit">Assign to course</button>
+          </div>
+        </form>
+      </div>
     </div>
 
-    <div class="card mb-3 p-3">
-      <h6>Assign instructor to learner</h6>
-      <form action="/admin/assign-instructor-learner" method="POST">
-        <div class="mb-2">
-          <select name="instructor_id" class="form-select" required>
-            <option value="">Select instructor</option>
-            <% (instructors || []).forEach(i => { %>
-              <option value="<%= i.id %>"><%= i.username %></option>
-            <% }) %>
-          </select>
-        </div>
-        <div class="mb-2">
-          <select name="learner_id" class="form-select" required>
-            <option value="">Select learner</option>
-            <% (learners || []).forEach(l => { %>
-              <option value="<%= l.id %>"><%= l.username %></option>
-            <% }) %>
-          </select>
-        </div>
-        <button class="btn btn-outline-primary btn-sm">Assign</button>
-      </form>
+    <div class="card shadow-sm">
+      <div class="card-body">
+        <h6 class="card-title">Assign instructor to learner</h6>
+        <form action="/admin/assign-instructor-learner" method="POST" novalidate>
+          <div class="mb-2">
+            <label class="form-label small">Instructor</label>
+            <select name="instructor_id" class="form-select" required>
+              <option value="">Select instructor</option>
+              <% (instructors || []).forEach(i => { %>
+                <option value="<%= i.id %>"><%= i.username %></option>
+              <% }) %>
+            </select>
+          </div>
+          <div class="mb-3">
+            <label class="form-label small">Learner</label>
+            <select name="learner_id" class="form-select" required>
+              <option value="">Select learner</option>
+              <% (learners || []).forEach(l => { %>
+                <option value="<%= l.id %>"><%= l.username %></option>
+              <% }) %>
+            </select>
+          </div>
+          <div class="d-grid">
+            <button class="btn btn-outline-primary btn-sm" type="submit">Assign</button>
+          </div>
+        </form>
+      </div>
     </div>
   </div>
 
-  <div class="col-md-8">
-    <div class="card p-3 mb-3">
-      <h6>Recent attendance</h6>
-      <% if (!attendance || attendance.length === 0) { %>
-        <div class="alert alert-info">No attendance recorded yet.</div>
-      <% } else { %>
-        <div class="table-responsive">
-          <table class="table table-sm">
-            <thead>
-              <tr><th>Date</th><th>Learner</th><th>Course</th><th>Status</th></tr>
-            </thead>
-            <tbody>
-              <% attendance.forEach(a => { %>
-                <tr>
-                  <td><%= a.date %></td>
-                  <td><%= a.learner_name %></td>
-                  <td><%= a.course_title %></td>
-                  <td><%= a.status %></td>
-                </tr>
-              <% }) %>
-            </tbody>
-          </table>
+  <div class="col-lg-8">
+    <div class="card shadow-sm mb-3">
+      <div class="card-body">
+        <div class="d-flex justify-content-between align-items-center mb-3">
+          <h6 class="card-title mb-0">Recent attendance</h6>
+          <small class="text-muted">Latest records</small>
         </div>
-      <% } %>
+
+        <% if (!attendance || attendance.length === 0) { %>
+          <div class="alert alert-info mb-0">No attendance recorded yet.</div>
+        <% } else { %>
+          <div class="table-responsive">
+            <table class="table table-sm table-hover align-middle mb-0">
+              <thead class="table-light">
+                <tr>
+                  <th scope="col">Date</th>
+                  <th scope="col">Learner</th>
+                  <th scope="col">Course</th>
+                  <th scope="col">Status</th>
+                </tr>
+              </thead>
+              <tbody>
+                <% attendance.forEach(a => { %>
+                  <tr>
+                    <td class="text-nowrap"><%= a.date || '' %></td>
+                    <td><%= a.learner_name || '' %></td>
+                    <td><%= a.course_title || '' %></td>
+                    <td>
+                      <% if (a.status === 'B' || a.status === 'P' || a.present) { %>
+                        <span class="badge bg-success">Present</span>
+                      <% } else { %>
+                        <span class="badge bg-secondary">Absent</span>
+                      <% } %>
+                    </td>
+                  </tr>
+                <% }) %>
+              </tbody>
+            </table>
+          </div>
+        <% } %>
+      </div>
     </div>
 
-    <div class="card p-3">
-      <h6>Certificate requests</h6>
-      <% if (!certificateRequests || certificateRequests.length === 0) { %>
-        <div class="alert alert-info">No requests</div>
-      <% } else { %>
-        <table class="table table-sm">
-          <thead><tr><th>When</th><th>Learner</th><th>Course</th><th>Status</th><th>Action</th></tr></thead>
-          <tbody>
-            <% certificateRequests.forEach(r => { %>
-              <tr>
-                <td><%= r.requested_at %></td>
-                <td><%= r.learner_name %></td>
-                <td><%= r.course_title %></td>
-                <td><%= r.status %></td>
-                <td>
-                  <form action="/admin/certificate-update" method="POST" class="d-flex gap-2">
-                    <input type="hidden" name="request_id" value="<%= r.id %>" />
-                    <select name="status" class="form-select form-select-sm" style="width:140px;">
-                      <option value="requested" <%= r.status === 'requested' ? 'selected' : '' %>>Requested</option>
-                      <option value="issued" <%= r.status === 'issued' ? 'selected' : '' %>>Issued</option>
-                    </select>
-                    <button class="btn btn-sm btn-outline-primary">Update</button>
-                  </form>
-                </td>
-              </tr>
-            <% }) %>
-          </tbody>
-        </table>
-      <% } %>
+    <div class="card shadow-sm mb-3">
+      <div class="card-body">
+        <div class="d-flex justify-content-between align-items-center mb-3">
+          <h6 class="card-title mb-0">Course progress (recent)</h6>
+          <small class="text-muted">Most recent updates</small>
+        </div>
+
+        <% if (!courseProgress || courseProgress.length === 0) { %>
+          <div class="alert alert-info mb-0">No progress updates yet.</div>
+        <% } else { %>
+          <div class="table-responsive">
+            <table class="table table-sm align-middle mb-0">
+              <thead class="table-light">
+                <tr>
+                  <th scope="col">When</th>
+                  <th scope="col">Course</th>
+                  <th scope="col">Learner</th>
+                  <th scope="col">Progress</th>
+                </tr>
+              </thead>
+              <tbody>
+                <% courseProgress.forEach(cp => { %>
+                  <tr>
+                    <td class="text-nowrap"><%= cp.updated_at || '' %></td>
+                    <td><%= cp.course_title || '' %></td>
+                    <td><%= cp.learner_name || '' %></td>
+                    <td style="min-width:220px;">
+                      <div class="d-flex align-items-center gap-2">
+                        <div style="min-width:54px;">
+                          <strong><%= Number(cp.progress_percent || 0) %>%</strong>
+                        </div>
+                        <div class="progress w-100" style="height:8px;" aria-hidden="true">
+                          <div class="progress-bar bg-info" role="progressbar" style="width: <%= Number(cp.progress_percent || 0) %>%;" aria-valuenow="<%= Number(cp.progress_percent || 0) %>" aria-valuemin="0" aria-valuemax="100"></div>
+                        </div>
+                      </div>
+                    </td>
+                  </tr>
+                <% }) %>
+              </tbody>
+            </table>
+          </div>
+        <% } %>
+      </div>
+    </div>
+
+    <div class="card shadow-sm">
+      <div class="card-body">
+        <div class="d-flex justify-content-between align-items-center mb-3">
+          <h6 class="card-title mb-0">Certificate requests</h6>
+          <small class="text-muted">Manage requests</small>
+        </div>
+
+        <% if (!certificateRequests || certificateRequests.length === 0) { %>
+          <div class="alert alert-info mb-0">No requests</div>
+        <% } else { %>
+          <div class="table-responsive">
+            <table class="table table-sm table-hover align-middle mb-0">
+              <thead class="table-light">
+                <tr>
+                  <th scope="col">When</th>
+                  <th scope="col">Learner</th>
+                  <th scope="col">Course</th>
+                  <th scope="col">Status</th>
+                  <th scope="col">Action</th>
+                </tr>
+              </thead>
+              <tbody>
+                <% certificateRequests.forEach(r => { %>
+                  <tr>
+                    <td class="text-nowrap"><%= r.requested_at || '' %></td>
+                    <td><%= r.learner_name || '' %></td>
+                    <td><%= r.course_title || '' %></td>
+                    <td>
+                      <% if (r.status === 'issued') { %>
+                        <span class="badge bg-success">Issued</span>
+                      <% } else { %>
+                        <span class="badge bg-warning text-dark">Requested</span>
+                      <% } %>
+                    </td>
+                    <td>
+                      <form action="/admin/certificate-update" method="POST" class="d-flex gap-2">
+                        <input type="hidden" name="request_id" value="<%= r.id %>" />
+                        <select name="status" class="form-select form-select-sm" style="width:140px;">
+                          <option value="requested" <%= r.status === 'requested' ? 'selected' : '' %>>Requested</option>
+                          <option value="issued" <%= r.status === 'issued' ? 'selected' : '' %>>Issued</option>
+                        </select>
+                        <button class="btn btn-sm btn-outline-primary" type="submit">Update</button>
+                      </form>
+                    </td>
+                  </tr>
+                <% }) %>
+              </tbody>
+            </table>
+          </div>
+        <% } %>
+      </div>
     </div>
   </div>
 </div>

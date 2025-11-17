@@ -1,51 +1,253 @@
-/* Custom styles to complement Bootstrap and give a cohesive look */
+/* Professional Bootstrap-compatible theme for ProwessityVLMS
+   Responsive improvements and small UI tweaks to ensure good behavior
+   on mobile phones, tablets and laptops.
+*/
 
-/* Body and container tweaks */
-body {
-  background: #f8fafc;
-  color: #212529;
-  font-family: system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial;
+/* Keep the project's variables but tweak container responsiveness */
+:root{
+  --bs-primary: #0d6efd;
+  --brand-600: #0b5ed7;
+  --brand-500: #0d6efd;
+  --brand-400: #3ea0ff;
+  --muted: #6c757d;
+  --surface: #ffffff;
+  --bg: #f4f7fb;
+  --accent: #0f9d58;
+  --danger: #dc3545;
+  --radius: 12px;
+  --elev-1: 0 1px 3px rgba(16,24,40,0.04), 0 1px 2px rgba(16,24,40,0.06);
+  --elev-2: 0 6px 24px rgba(16,24,40,0.08);
+  --max-content-width: 1100px;
+  --container-pad: 1.25rem;
+  --muted-bg: #eef3fb;
 }
 
-/* Hero */
+/* ---------------------------
+   Global page
+   --------------------------- */
+*{box-sizing:border-box}
+html,body{
+  height:100%;
+  margin:0;
+  background:var(--bg);
+  color:#0f1724;
+  font-family:Inter, system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial;
+  -webkit-font-smoothing:antialiased;
+  -moz-osx-font-smoothing:grayscale;
+  line-height:1.5;
+  font-size:16px;
+}
+
+/* Use Bootstrap container behavior but keep a comfortable max-width */
+.container {
+  max-width: var(--max-content-width);
+  padding-left: var(--container-pad);
+  padding-right: var(--container-pad);
+  margin-left: auto;
+  margin-right: auto;
+}
+
+/* ---------------------------
+   Hero
+   --------------------------- */
 .hero {
-  background: linear-gradient(180deg, #ffffff 0%, #f3f6f9 100%);
-  border-radius: 8px;
-  padding: 2rem;
+  background: linear-gradient(180deg, rgba(255,255,255,0.95), rgba(247,250,255,0.95));
+  border-radius: calc(var(--radius) + 4px);
+  padding: 2.25rem;
+  box-shadow: var(--elev-1);
+  border: 1px solid rgba(13,110,253,0.04);
 }
 
-/* Cards */
+/* Responsive headline sizing */
+.hero h1 {
+  font-size: clamp(1.4rem, 3.4vw, 2.4rem);
+  margin: 0 0 .5rem 0;
+  letter-spacing: -0.01em;
+  color: #072146;
+  font-weight:600;
+}
+.hero .lead {
+  color: var(--muted);
+  font-size: 1rem;
+  margin-bottom:0;
+}
+
+/* ---------------------------
+   Cards
+   --------------------------- */
 .card {
+  border-radius: var(--radius);
+  box-shadow: var(--elev-1);
+  border: 0;
+  background: var(--surface);
+}
+.card .card-title { margin-bottom: 0.5rem; font-weight:600; color:#072146; }
+.card p, .card .text-muted { color: #6b7280; }
+
+/* ---------------------------
+   Navbar / header helpers
+   --------------------------- */
+.navbar {
+  background: transparent;
+  padding-top: .5rem;
+  padding-bottom: .5rem;
+}
+.navbar-brand {
+  display:flex;
+  align-items:center;
+  gap:.6rem;
+  font-weight:700;
+  color:#072146;
+}
+.navbar-brand img {
+  height:36px;
+  width:auto;
+  border-radius:8px;
+  box-shadow: var(--elev-1);
+}
+.navbar-nav .nav-link {
+  padding: .35rem .6rem;
+}
+@media (max-width: 576px){
+  .navbar-nav { margin-top:.4rem; }
+}
+
+/* ---------------------------
+   Forms and auth card
+   --------------------------- */
+.auth-card {
+  max-width: 520px;
+  width: 100%;
+  margin: 0 auto;
+  padding: 1.5rem;
+  border-radius: calc(var(--radius) + 2px);
+  background: linear-gradient(180deg, #fff, #fbfdff);
+  box-shadow: var(--elev-2);
+  border: 1px solid rgba(10,20,40,0.04);
+}
+
+/* Make auth card more compact on small phones */
+@media (max-width:420px) {
+  .auth-card {
+    padding: 1rem;
+    margin: 0 0.5rem;
+  }
+}
+
+/* Input focus: align with brand */
+.form-control:focus, .form-select:focus, .form-control:active {
+  box-shadow: 0 0 0 .15rem rgba(13,110,253,0.12);
+  border-color: var(--brand-500);
+  outline: none;
+}
+
+/* Primary subtle full-width buttons */
+.btn-primary {
+  background: linear-gradient(180deg, var(--brand-500), var(--brand-600));
+  border: none;
+  box-shadow: 0 4px 14px rgba(13,110,253,0.12);
+  border-radius: 10px;
+  padding: .55rem .9rem;
+  font-weight:600;
+  transition: transform .08s ease, box-shadow .12s ease;
+}
+.btn-primary:hover{ transform: translateY(-1px); box-shadow: 0 8px 28px rgba(13,110,253,0.14); }
+.btn-outline-secondary {
+  border-radius: 10px;
+  padding: .45rem .8rem;
+}
+
+/* ---------------------------
+   Tables
+   --------------------------- */
+.table { background: transparent; border-radius: 10px; overflow: hidden; }
+.table thead th { background: var(--muted-bg); color: #374151; font-weight:600; border:0; padding: .75rem 1rem; }
+.table tbody td { padding: .85rem 1rem; vertical-align: middle; border-top: 1px solid rgba(15,23,36,0.04); }
+
+/* ---------------------------
+   Lists & list-group tweaks
+   --------------------------- */
+.list-group-item {
+  border: 0;
+  padding: 1rem;
+  background: linear-gradient(180deg, #fff, #fbfcff);
+  border-radius: var(--radius);
+  margin-bottom: .6rem;
+  box-shadow: var(--elev-1);
+}
+.list-group-item:last-child { margin-bottom: 0; }
+
+/* ---------------------------
+   Footer
+   --------------------------- */
+/* footer {
+  margin-top: 2.5rem;
+  padding: 1.25rem 0;
+  background: transparent;
+  color: #6b7280;
+}
+footer .small { color: #9aa3b2; } */
+
+/* ---------------------------
+   Uploads / file previews
+   --------------------------- */
+.upload-preview {
+  display:flex; gap:.75rem; align-items:center; padding:.6rem; border-radius:10px;
+  background:#fbfdff; border:1px dashed rgba(13,110,253,0.06);
+}
+.upload-preview .file-name { font-weight:600; color:#0b1722; }
+
+/* ---------------------------
+   Badges / status
+   --------------------------- */
+.badge-issued { background: linear-gradient(180deg, #ecfdf5, #d1fae5); color: #065f46; border-radius: 999px; padding: .25rem .6rem; font-weight:600; font-size:.78rem; }
+.badge-requested { background: linear-gradient(180deg, #fff7ed, #fff1e6); color:#92400e; border-radius:999px; padding:.25rem .6rem; font-weight:600; font-size:.78rem; }
+
+/* ---------------------------
+   Accessibility / focus visible
+   --------------------------- */
+:focus { outline: none; }
+:focus-visible {
+  outline: 3px solid rgba(13,110,253,0.18);
+  outline-offset: 2px;
   border-radius: 8px;
 }
 
-/* Auth card */
-.auth-card {
-  max-width: 460px;
-  width: 100%;
+/* ---------------------------
+   Small helpers & microcopy
+   --------------------------- */
+.small-muted { color: var(--muted); font-size:.875rem; }
+
+/* ---------------------------
+   Responsive tweaks
+   --------------------------- */
+@media (max-width: 992px) {
+  .hero { padding: 1.25rem; }
+  .card-body { padding: 1rem; }
+}
+@media (max-width: 768px) {
+  .navbar-brand span { font-size: 1rem; }
 }
 
-/* Google button */
-.google-btn {
-  background: #fff;
-  border: 1px solid #e0e0e0;
-  color: #202124;
-}
-.google-btn .fab { color: #d93025; }
+/* ---------------------------
+   Micro animations
+   --------------------------- */
+.fade-in { animation: fadeIn .36s ease both; }
+@keyframes fadeIn{ from { opacity:0; transform: translateY(6px);} to { opacity:1; transform: none; } }
 
-/* Manage users table small adjustments */
-.table td, .table th {
-  vertical-align: middle;
-}
+/* ---------------------------
+   Misc polish for forms, alignment and spacing used in templates
+   --------------------------- */
+.d-grid .btn { width:100%; }
+.mb-2 { margin-bottom:.6rem !important; }
+.mt-3 { margin-top:.9rem !important; }
+.p-3 { padding: .9rem !important; }
 
-/* Footer */
-footer {
-  background: #ffffff;
-  box-shadow: 0 -1px 0 rgba(0,0,0,0.02);
-}
+/* Utilities for images and tables across templates */
+img.img-fluid { max-width:100%; height:auto; display:block; }
+.table-responsive { border-radius: 10px; overflow:auto; }
 
-/* Small responsive fixes */
-@media (max-width: 576px) {
-  .navbar-brand span { display: none; }
+/* Small improvement to collapse spacing so nav links don't feel cramped on tablets */
+@media (min-width: 576px) and (max-width: 991px) {
+  .navbar-nav .nav-link { padding: .5rem .75rem; }
 }
-

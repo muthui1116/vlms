@@ -71,7 +71,7 @@
       </form>
     </div>
 
-    <div class="card p-3">
+    <div class="card p-3 mb-3">
       <h6>Create meeting (Google Meet)</h6>
       <form action="/instructor/create-meeting" method="POST">
         <div class="mb-2">
@@ -91,6 +91,103 @@
         <button class="btn btn-outline-primary btn-sm">Create meeting</button>
       </form>
     </div>
+
+    <!-- Record Attendance card -->
+    <div class="card p-3 mt-3">
+      <h6>Record attendance</h6>
+      <form action="/instructor/record-attendance" method="POST">
+        <input type="hidden" name="instructor_id" value="<%= user?.id %>" />
+
+        <div class="mb-2">
+          <select name="course_id" class="form-select" required>
+            <option value="">Select course</option>
+            <% (courses || []).forEach(c => { %>
+              <option value="<%= c.id %>"><%= c.title %></option>
+            <% }) %>
+          </select>
+        </div>
+
+        <div class="mb-2">
+          <input type="date" name="date" class="form-control" required />
+        </div>
+
+        <div class="mb-2 small text-muted">
+          Mark attendance for learners below. Default is Absent (A). Choose "Present" to mark as present (B).
+        </div>
+
+        <div class="mb-2" style="max-height:220px; overflow:auto;">
+          <% if ((learners || []).length === 0) { %>
+            <div class="alert alert-info">No learners available to mark.</div>
+          <% } else { %>
+            <div class="list-group">
+              <% (learners || []).forEach(l => { %>
+                <div class="list-group-item d-flex align-items-center justify-content-between">
+                  <div>
+                    <strong><%= l.username %></strong><br/>
+                    <small class="text-muted"><%= l.email %></small>
+                  </div>
+                  <div class="d-flex gap-2 align-items-center">
+                    <div class="form-check form-check-inline">
+                      <input class="form-check-input" type="radio" name="status_<%= l.id %>" id="status_<%= l.id %>_a" value="A" checked>
+                      <label class="form-check-label small" for="status_<%= l.id %>_a">Absent</label>
+                    </div>
+                    <div class="form-check form-check-inline">
+                      <input class="form-check-input" type="radio" name="status_<%= l.id %>" id="status_<%= l.id %>_b" value="B">
+                      <label class="form-check-label small" for="status_<%= l.id %>_b">Present</label>
+                    </div>
+                  </div>
+                </div>
+              <% }) %>
+            </div>
+          <% } %>
+        </div>
+
+        <div class="d-grid">
+          <button type="submit" class="btn btn-success btn-sm">Save attendance</button>
+        </div>
+      </form>
+      <div class="small text-muted mt-2">Saved attendance records will appear in the Admin dashboard under "Recent attendance".</div>
+    </div>
+    <!-- END Record Attendance -->
+
+    <!-- Update weekly progress -->
+    <div class="card p-3 mt-3">
+      <h6>Update weekly progress</h6>
+      <p class="small text-muted mb-2">Record a learner's course progress for this week (1% - 100%).</p>
+      <form action="/instructor/update-progress" method="POST">
+        <div class="mb-2">
+          <label class="form-label small">Course</label>
+          <select name="course_id" class="form-select" required>
+            <option value="">Select course</option>
+            <% (courses || []).forEach(c => { %>
+              <option value="<%= c.id %>"><%= c.title %></option>
+            <% }) %>
+          </select>
+        </div>
+
+        <div class="mb-2">
+          <label class="form-label small">Learner</label>
+          <select name="user_id" class="form-select" required>
+            <option value="">Select learner</option>
+            <% (learners || []).forEach(l => { %>
+              <option value="<%= l.id %>"><%= l.username %> — <%= l.email %></option>
+            <% }) %>
+          </select>
+        </div>
+
+        <div class="mb-2">
+          <label class="form-label small">Progress (%)</label>
+          <input type="number" name="progress_percent" class="form-control" min="1" max="100" step="1" placeholder="e.g. 50" required />
+        </div>
+
+        <div class="d-grid">
+          <button class="btn btn-primary btn-sm">Update progress</button>
+        </div>
+      </form>
+      <div class="small text-muted mt-2">Progress updates are weekly — instructors should update each learner's percent once per week.</div>
+    </div>
+    <!-- END Update weekly progress -->
+
   </div>
 
   <div class="col-md-8">

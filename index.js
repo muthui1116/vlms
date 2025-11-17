@@ -247,7 +247,7 @@ async function initDB() {
       )
     `;
 
-      await sql`ALTER TABLE submissions ADD COLUMN IF NOT EXISTS graded BOOLEAN DEFAULT FALSE`;
+    await sql`ALTER TABLE submissions ADD COLUMN IF NOT EXISTS graded BOOLEAN DEFAULT FALSE`;
     await sql`ALTER TABLE submissions ADD COLUMN IF NOT EXISTS grade TEXT`;
     await sql`ALTER TABLE submissions ADD COLUMN IF NOT EXISTS feedback TEXT`;
 
@@ -441,6 +441,8 @@ app.get("/dashboard", ensureAuthenticated, (req, res) => {
    - assign learner/course, instructor/course, instructor/learner
    - view certificate requests & attendance
    ----------------------- */
+// Replace the existing /admin-dashboard route in your index.js with this block.
+// It fetches course_progress rows and passes them into the admin template as courseProgress.
 app.get("/admin-dashboard", ensureAuthenticated, ensureRole(1), async (req, res) => {
   try {
     const learners = await fetchLearners();
@@ -448,6 +450,18 @@ app.get("/admin-dashboard", ensureAuthenticated, ensureRole(1), async (req, res)
     const courses = await fetchCourses();
     const attendance = await fetchAttendanceRecent();
     const certRequests = await fetchCertificateRequests();
+
+    // Fetch recent course progress entries, include learner & course names
+    const cpRaw = await sql`
+      SELECT cp.*, u.username as learner_name, c.title as course_title
+      FROM course_progress cp
+      LEFT JOIN users u ON u.id = cp.user_id
+      LEFT JOIN courses c ON c.id = cp.course_id
+      ORDER BY cp.updated_at DESC
+      LIMIT 500
+    `;
+    const courseProgress = rows(cpRaw);
+
     res.render("adminDashboard", {
       user: req.user,
       learners,
@@ -455,6 +469,7 @@ app.get("/admin-dashboard", ensureAuthenticated, ensureRole(1), async (req, res)
       courses,
       attendance,
       certificateRequests: certRequests,
+      courseProgress,
     });
   } catch (err) {
     console.error("admin-dashboard", err);
@@ -476,13 +491,16 @@ app.post("/admin/courses", ensureAuthenticated, ensureRole(1), async (req, res) 
   }
 });
 
-// Add /instructor/update-progress route (place this near other instructor routes)
+// Replace the existing POST /instructor/update-progress handler with this fixed, robust version.
+// It preserves your permission checks and upsert behavior but fixes the SQL typos and handles
+// the case where the schema may have a learner_id column (some DB variants you showed earlier).
 app.post("/instructor/update-progress", ensureAuthenticated, ensureRole(2), async (req, res) => {
   try {
     const instructorId = Number(req.user?.id);
     const courseId = Number(req.body.course_id || req.body.courseId || 0);
     const userId = Number(req.body.user_id || req.body.userId || 0);
-    const percent = Math.max(0, Math.min(100, Number(req.body.progress_percent || req.body.percent || 0)));
+    const percentRaw = Number(req.body.progress_percent || req.body.percent || 0);
+    const percent = Math.max(0, Math.min(100, Number.isNaN(percentRaw) ? 0 : percentRaw));
 
     if (!courseId || !userId || Number.isNaN(percent)) {
       return res.status(400).send("Missing or invalid course_id, user_id or progress_percent");
@@ -494,15 +512,35 @@ app.post("/instructor/update-progress", ensureAuthenticated, ensureRole(2), asyn
       return res.status(403).send("Not assigned to this course");
     }
 
-    // Upsert progress (insert or update existing row)
-    await sql`
-      INSERT INTO course_progress (course_id, user_id, progress_percent, updated_at)
-      VALUES (${courseId}, ${userId}, ${percent}, NOW())
-      ON CONFLICT (course_id, user_id)
-      DO UPDATE SET progress_percent = EXCLUDED.progress_percent, updated_at = NOW()
+    // Some deployments/schemas may have a learner_id column (not in the original schema)
+    // and some do not. Detect column presence and issue an appropriate upsert so we don't
+    // try to insert NULL into learner_id when it exists and is NOT NULL.
+    const colCheck = await sql`
+      SELECT column_name
+      FROM information_schema.columns
+      WHERE table_name = 'course_progress' AND column_name = 'learner_id'
+      LIMIT 1
     `;
+    const hasLearnerId = rows(colCheck).length > 0;
 
-    // Redirect back to instructor dashboard (or return JSON if you prefer)
+    if (hasLearnerId) {
+      // if learner_id exists, provide it (use same value as user_id)
+      await sql`
+        INSERT INTO course_progress (course_id, user_id, learner_id, progress_percent, updated_at)
+        VALUES (${courseId}, ${userId}, ${userId}, ${percent}, NOW())
+        ON CONFLICT (course_id, user_id)
+        DO UPDATE SET progress_percent = EXCLUDED.progress_percent, updated_at = NOW()
+      `;
+    } else {
+      // standard schema: no learner_id column
+      await sql`
+        INSERT INTO course_progress (course_id, user_id, progress_percent, updated_at)
+        VALUES (${courseId}, ${userId}, ${percent}, NOW())
+        ON CONFLICT (course_id, user_id)
+        DO UPDATE SET progress_percent = EXCLUDED.progress_percent, updated_at = NOW()
+      `;
+    }
+
     return res.redirect("/instructor-dashboard");
   } catch (err) {
     console.error("POST /instructor/update-progress error:", err && err.stack ? err.stack : err);
