@@ -177,16 +177,6 @@ html,body{
 }
 .list-group-item:last-child { margin-bottom: 0; }
 
-/* ---------------------------
-   Footer
-   --------------------------- */
-/* footer {
-  margin-top: 2.5rem;
-  padding: 1.25rem 0;
-  background: transparent;
-  color: #6b7280;
-}
-footer .small { color: #9aa3b2; } */
 
 /* ---------------------------
    Uploads / file previews
@@ -242,10 +232,6 @@ footer .small { color: #9aa3b2; } */
 .mb-2 { margin-bottom:.6rem !important; }
 .mt-3 { margin-top:.9rem !important; }
 .p-3 { padding: .9rem !important; }
-
-/* Utilities for images and tables across templates */
-img.img-fluid { max-width:100%; height:auto; display:block; }
-.table-responsive { border-radius: 10px; overflow:auto; }
 
 /* Small improvement to collapse spacing so nav links don't feel cramped on tablets */
 @media (min-width: 576px) and (max-width: 991px) {
