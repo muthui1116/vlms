@@ -781,37 +781,91 @@ app.post("/instructor/create-meeting", ensureAuthenticated, ensureRole(2), async
 });
 
 // record attendance for many learners on a given date
+// Replace your /instructor/record-attendance handler with this version
 app.post("/instructor/record-attendance", ensureAuthenticated, ensureRole(2), async (req, res) => {
   try {
-    const instructorId = req.user.id;
+    console.log("DEBUG: /instructor/record-attendance called by user:", req.user?.id);
+    console.log("DEBUG: raw req.body:", JSON.stringify(req.body, null, 2));
+
+    const instructorId = Number(req.user?.id);
     const courseId = Number(req.body.course_id);
     const date = req.body.date;
-    // expected body: statuses like status_<learnerId> = 'A' or 'B'
     if (!courseId || !date) return res.status(400).send("Missing course or date");
 
-    // For simple beginner UI, instructor sends statuses in the form
-    // Iterate keys and look for status_*
+    // helper: compute year and ISO week for the date string (YYYY-MM-DD)
+    function isoWeekYearFromDate(dateStr) {
+      const d = new Date(dateStr + "T00:00:00Z");
+      const year = d.getUTCFullYear();
+      // ISO week:
+      const target = new Date(d.valueOf());
+      const dayNr = (d.getUTCDay() + 6) % 7; // Mon=0..Sun=6
+      target.setUTCDate(target.getUTCDate() - dayNr + 3);
+      const firstThursday = new Date(Date.UTC(target.getUTCFullYear(), 0, 4));
+      const weekNumber = 1 + Math.round((((target - firstThursday) / 86400000) - 3 + ((firstThursday.getUTCDay() + 6) % 7)) / 7);
+      return { year, weekNumber };
+    }
+
+    const { year, weekNumber } = isoWeekYearFromDate(date);
+
+    // iterate incoming form keys for status_<learnerId>
     for (const key of Object.keys(req.body)) {
       const match = key.match(/^status_(\d+)$/);
       if (!match) continue;
       const learnerId = Number(match[1]);
       const statusRaw = (req.body[key] || "").toUpperCase().trim();
-      const status = statusRaw === "B" ? "B" : "A"; // default to Absent if not B
-      await sql`
-        INSERT INTO attendance (learner_id, course_id, date, status)
-        VALUES (${learnerId}, ${courseId}, ${date}, ${status})
-        ON CONFLICT (learner_id, course_id, date)
-        DO UPDATE SET status = EXCLUDED.status, created_at = NOW()
-      `;
+      const present = statusRaw === "B" || statusRaw === "P" || statusRaw === "1";
+      // status text: keep your app convention (P = present, A = absent)
+      const status = present ? "P" : "A";
+
+      try {
+        await sql`
+          INSERT INTO attendance (
+            learner_id,
+            course_id,
+            date,
+            status,
+            present,
+            instructor_id,
+            year,
+            week_number,
+            created_at
+          )
+          VALUES (
+            ${learnerId},
+            ${courseId},
+            ${date},
+            ${status},
+            ${present},
+            ${instructorId},
+            ${year},
+            ${weekNumber},
+            NOW()
+          )
+          ON CONFLICT (learner_id, course_id, date)
+          DO UPDATE SET
+            status = EXCLUDED.status,
+            present = EXCLUDED.present,
+            instructor_id = EXCLUDED.instructor_id,
+            year = EXCLUDED.year,
+            week_number = EXCLUDED.week_number,
+            created_at = NOW()
+        `;
+      } catch (inErr) {
+        // Log full details for debugging (include learner id and SQL error)
+        console.error("DEBUG: SQL error inserting/updating attendance for learner", learnerId);
+        console.error(inErr && inErr.stack ? inErr.stack : inErr);
+        // Re-throw to hit outer catch and return 500
+        throw inErr;
+      }
     }
 
     return res.redirect("/instructor-dashboard");
   } catch (err) {
-    console.error("record attendance", err);
-    res.status(500).send("Server error");
+    // Print full stack (very important for diagnosing)
+    console.error("record attendance ERROR (full):", err && err.stack ? err.stack : err);
+    return res.status(500).send("Server error");
   }
 });
-
 /* -----------------------
    Learner dashboard
    - view enrolled courses, materials, meetings
