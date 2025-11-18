@@ -46,8 +46,7 @@ app.use(
 app.use(passport.initialize());
 app.use(passport.session());
 
-// Add this small middleware after passport.session() initialization (so req.user is available)
-// It ensures every template gets `user` as a local variable (either the logged-in user or null).
+// Ensure templates have access to `user`
 app.use((req, res, next) => {
   res.locals.user = req.user || null;
   next();
@@ -80,7 +79,7 @@ passport.deserializeUser(async (id, cb) => {
 });
 
 /* -----------------------
-   Helper functions
+   Helpers & auth middleware
    ----------------------- */
 function ensureAuthenticated(req, res, next) {
   if (req.isAuthenticated && req.isAuthenticated()) return next();
@@ -103,8 +102,7 @@ function rows(result) {
 }
 
 /* -----------------------
-   Database initialization - simple beginner-friendly schema
-   All tables created with IF NOT EXISTS so running the server is safe.
+   Database initialization
    ----------------------- */
 async function initDB() {
   try {
@@ -131,7 +129,7 @@ async function initDB() {
       )
     `;
 
-    // enrollments (learner <-> courses)
+    // enrollments
     await sql`
       CREATE TABLE IF NOT EXISTS enrollments (
         id SERIAL PRIMARY KEY,
@@ -142,7 +140,7 @@ async function initDB() {
       )
     `;
 
-    // instructor_courses (assign instructor to course)
+    // instructor_courses
     await sql`
       CREATE TABLE IF NOT EXISTS instructor_courses (
         id SERIAL PRIMARY KEY,
@@ -153,7 +151,7 @@ async function initDB() {
       )
     `;
 
-    // instructor_learner (assign instructor to learner)
+    // instructor_learner
     await sql`
       CREATE TABLE IF NOT EXISTS instructor_learner (
         id SERIAL PRIMARY KEY,
@@ -164,20 +162,20 @@ async function initDB() {
       )
     `;
 
-    // attendance (one row per learner/course/date)
+    // attendance
     await sql`
       CREATE TABLE IF NOT EXISTS attendance (
         id SERIAL PRIMARY KEY,
         learner_id INTEGER REFERENCES users(id) ON DELETE CASCADE,
         course_id INTEGER REFERENCES courses(id) ON DELETE CASCADE,
         date DATE NOT NULL,
-        status CHAR(1) NOT NULL DEFAULT 'A', -- A = Absent, B = Present (beginner friendly)
+        status CHAR(1) NOT NULL DEFAULT 'A',
         created_at TIMESTAMP DEFAULT NOW(),
         UNIQUE(learner_id, course_id, date)
       )
     `;
 
-    // assignments (created by instructor)
+    // assignments
     await sql`
       CREATE TABLE IF NOT EXISTS assignments (
         id SERIAL PRIMARY KEY,
@@ -193,7 +191,7 @@ async function initDB() {
       )
     `;
 
-    // optional assignment_targets: which learners were targeted for the assignment
+    // assignment_targets
     await sql`
       CREATE TABLE IF NOT EXISTS assignment_targets (
         id SERIAL PRIMARY KEY,
@@ -203,7 +201,7 @@ async function initDB() {
       )
     `;
 
-    // submissions (learner submits for assignment)
+    // submissions
     await sql`
       CREATE TABLE IF NOT EXISTS submissions (
         id SERIAL PRIMARY KEY,
@@ -235,7 +233,7 @@ async function initDB() {
       )
     `;
 
-    // meetings (google meet link + time)
+    // meetings
     await sql`
       CREATE TABLE IF NOT EXISTS meetings (
         id SERIAL PRIMARY KEY,
@@ -246,18 +244,6 @@ async function initDB() {
         created_at TIMESTAMP DEFAULT NOW()
       )
     `;
-
-    await sql`ALTER TABLE submissions ADD COLUMN IF NOT EXISTS graded BOOLEAN DEFAULT FALSE`;
-    await sql`ALTER TABLE submissions ADD COLUMN IF NOT EXISTS grade TEXT`;
-    await sql`ALTER TABLE submissions ADD COLUMN IF NOT EXISTS feedback TEXT`;
-
-    // Optional fields used elsewhere
-    await sql`ALTER TABLE submissions ADD COLUMN IF NOT EXISTS file_original_name TEXT`;
-    await sql`ALTER TABLE submissions ADD COLUMN IF NOT EXISTS external_link TEXT`;
-
-    // Additional safe ensures (no-op if present)
-    await sql`ALTER TABLE assignments ADD COLUMN IF NOT EXISTS file_link TEXT`;
-    await sql`ALTER TABLE materials ADD COLUMN IF NOT EXISTS file_link TEXT`;
 
     // course_progress
     await sql`
@@ -271,7 +257,7 @@ async function initDB() {
       )
     `;
 
-    // certificate requests
+    // certificate_requests
     await sql`
       CREATE TABLE IF NOT EXISTS certificate_requests (
         id SERIAL PRIMARY KEY,
@@ -292,7 +278,7 @@ async function initDB() {
 await initDB().catch((e) => console.error(e));
 
 /* -----------------------
-   Small query helpers
+   Data helpers
    ----------------------- */
 async function fetchCourses() {
   const r = await sql`SELECT id, title, description, link FROM courses ORDER BY id DESC`;
@@ -317,29 +303,50 @@ async function fetchEnrollmentsForUser(userId) {
   return rows(r);
 }
 async function fetchAssignmentsForLearner(learnerId) {
-  // assignments that target the learner OR where the learner is enrolled in the course
   const r = await sql`
-    SELECT DISTINCT a.*, u.username as instructor_name
+    SELECT a.*, u.username AS instructor_name, c.title AS course_title
     FROM assignments a
     LEFT JOIN users u ON u.id = a.instructor_id
-    LEFT JOIN assignment_targets at ON at.assignment_id = a.id
-    LEFT JOIN enrollments e ON e.course_id = a.course_id AND e.learner_id = ${learnerId}
-    WHERE at.learner_id = ${learnerId} OR e.learner_id = ${learnerId}
+    LEFT JOIN courses c ON c.id = a.course_id
+    WHERE a.course_id IN (SELECT course_id FROM enrollments WHERE learner_id = ${learnerId})
     ORDER BY a.created_at DESC
+    LIMIT 200
   `;
   return rows(r);
 }
-async function fetchSubmissionsForInstructor(instructorId) {
-  const r = await sql`
-    SELECT s.*, a.title as assignment_title, u.username as learner_name, c.title as course_title, a.instructor_id
+async function fetchSubmissionsForLearner(learnerId) {
+  const raw = await sql`
+    SELECT
+      s.*,
+      a.title AS assignment_title,
+      a.course_id AS assignment_course_id,
+      c.title AS course_title
     FROM submissions s
     LEFT JOIN assignments a ON a.id = s.assignment_id
-    LEFT JOIN users u ON u.id = s.learner_id
     LEFT JOIN courses c ON c.id = a.course_id
-    WHERE a.instructor_id = ${instructorId}
-    ORDER BY s.submitted_at DESC
+    WHERE s.learner_id = ${learnerId}
+    ORDER BY s.id DESC
   `;
-  return rows(r);
+  const rr = Array.isArray(raw) ? raw : (raw?.rows ?? raw ?? []);
+  return rr.map(s => {
+    const gradeVal = s.grade ?? null;
+    const gradedFlag = Boolean(s.graded) || (gradeVal !== null && gradeVal !== undefined);
+    return {
+      id: s.id,
+      assignment_id: s.assignment_id,
+      assignment_title: s.assignment_title,
+      course_id: s.assignment_course_id ?? s.course_id,
+      course_title: s.course_title ?? null,
+      learner_id: s.learner_id,
+      file_link: s.file_link ?? null,
+      external_link: s.external_link ?? null,
+      grade: gradeVal,
+      graded: gradedFlag,
+      graded_at: s.graded_at ?? s.updated_at ?? null,
+      created_at: s.created_at ?? s.submitted_at ?? null,
+      __raw: s,
+    };
+  });
 }
 async function fetchMaterialsForCourse(courseId) {
   const r = await sql`SELECT * FROM materials WHERE course_id = ${courseId} ORDER BY created_at DESC`;
@@ -385,8 +392,7 @@ app.get("/", async (req, res) => {
 });
 
 /* -----------------------
-   Auth: signup, login, logout
-   Beginner-friendly simple forms, password hashed
+   Auth
    ----------------------- */
 app.get("/signup", (req, res) => res.render("signup", { error: null }));
 app.post("/signup", async (req, res) => {
@@ -436,13 +442,8 @@ app.get("/dashboard", ensureAuthenticated, (req, res) => {
 });
 
 /* -----------------------
-   Admin dashboard
-   - create course
-   - assign learner/course, instructor/course, instructor/learner
-   - view certificate requests & attendance
+   Admin routes
    ----------------------- */
-// Replace the existing /admin-dashboard route in your index.js with this block.
-// It fetches course_progress rows and passes them into the admin template as courseProgress.
 app.get("/admin-dashboard", ensureAuthenticated, ensureRole(1), async (req, res) => {
   try {
     const learners = await fetchLearners();
@@ -451,7 +452,6 @@ app.get("/admin-dashboard", ensureAuthenticated, ensureRole(1), async (req, res)
     const attendance = await fetchAttendanceRecent();
     const certRequests = await fetchCertificateRequests();
 
-    // Fetch recent course progress entries, include learner & course names
     const cpRaw = await sql`
       SELECT cp.*, u.username as learner_name, c.title as course_title
       FROM course_progress cp
@@ -491,64 +491,6 @@ app.post("/admin/courses", ensureAuthenticated, ensureRole(1), async (req, res) 
   }
 });
 
-// Replace the existing POST /instructor/update-progress handler with this fixed, robust version.
-// It preserves your permission checks and upsert behavior but fixes the SQL typos and handles
-// the case where the schema may have a learner_id column (some DB variants you showed earlier).
-app.post("/instructor/update-progress", ensureAuthenticated, ensureRole(2), async (req, res) => {
-  try {
-    const instructorId = Number(req.user?.id);
-    const courseId = Number(req.body.course_id || req.body.courseId || 0);
-    const userId = Number(req.body.user_id || req.body.userId || 0);
-    const percentRaw = Number(req.body.progress_percent || req.body.percent || 0);
-    const percent = Math.max(0, Math.min(100, Number.isNaN(percentRaw) ? 0 : percentRaw));
-
-    if (!courseId || !userId || Number.isNaN(percent)) {
-      return res.status(400).send("Missing or invalid course_id, user_id or progress_percent");
-    }
-
-    // Optional permission check: instructor must be assigned to the course unless admin
-    const assigned = await sql`SELECT 1 FROM instructor_courses WHERE course_id = ${courseId} AND instructor_id = ${instructorId}`;
-    if (!rows(assigned).length && Number(req.user?.role) !== 1) {
-      return res.status(403).send("Not assigned to this course");
-    }
-
-    // Some deployments/schemas may have a learner_id column (not in the original schema)
-    // and some do not. Detect column presence and issue an appropriate upsert so we don't
-    // try to insert NULL into learner_id when it exists and is NOT NULL.
-    const colCheck = await sql`
-      SELECT column_name
-      FROM information_schema.columns
-      WHERE table_name = 'course_progress' AND column_name = 'learner_id'
-      LIMIT 1
-    `;
-    const hasLearnerId = rows(colCheck).length > 0;
-
-    if (hasLearnerId) {
-      // if learner_id exists, provide it (use same value as user_id)
-      await sql`
-        INSERT INTO course_progress (course_id, user_id, learner_id, progress_percent, updated_at)
-        VALUES (${courseId}, ${userId}, ${userId}, ${percent}, NOW())
-        ON CONFLICT (course_id, user_id)
-        DO UPDATE SET progress_percent = EXCLUDED.progress_percent, updated_at = NOW()
-      `;
-    } else {
-      // standard schema: no learner_id column
-      await sql`
-        INSERT INTO course_progress (course_id, user_id, progress_percent, updated_at)
-        VALUES (${courseId}, ${userId}, ${percent}, NOW())
-        ON CONFLICT (course_id, user_id)
-        DO UPDATE SET progress_percent = EXCLUDED.progress_percent, updated_at = NOW()
-      `;
-    }
-
-    return res.redirect("/instructor-dashboard");
-  } catch (err) {
-    console.error("POST /instructor/update-progress error:", err && err.stack ? err.stack : err);
-    return res.status(500).send("Server error");
-  }
-});
-
-// enroll learner
 app.post("/admin/enroll", ensureAuthenticated, ensureRole(1), async (req, res) => {
   try {
     const learnerId = Number(req.body.learner_id);
@@ -566,7 +508,6 @@ app.post("/admin/enroll", ensureAuthenticated, ensureRole(1), async (req, res) =
   }
 });
 
-// assign instructor to course
 app.post("/admin/assign-instructor-course", ensureAuthenticated, ensureRole(1), async (req, res) => {
   try {
     const instructorId = Number(req.body.instructor_id);
@@ -584,7 +525,6 @@ app.post("/admin/assign-instructor-course", ensureAuthenticated, ensureRole(1), 
   }
 });
 
-// assign instructor to learner
 app.post("/admin/assign-instructor-learner", ensureAuthenticated, ensureRole(1), async (req, res) => {
   try {
     const instructorId = Number(req.body.instructor_id);
@@ -602,7 +542,6 @@ app.post("/admin/assign-instructor-learner", ensureAuthenticated, ensureRole(1),
   }
 });
 
-// update certificate request status
 app.post("/admin/certificate-update", ensureAuthenticated, ensureRole(1), async (req, res) => {
   try {
     const id = Number(req.body.request_id);
@@ -617,45 +556,38 @@ app.post("/admin/certificate-update", ensureAuthenticated, ensureRole(1), async 
 });
 
 /* -----------------------
-   Instructor dashboard
-   - create assignment (optional file, link), optionally target learners
-   - create materials
-   - create meeting (google meet link)
-   - record attendance
-   - view submissions to grade
+   Instructor routes
    ----------------------- */
 app.get("/instructor-dashboard", ensureAuthenticated, ensureRole(2), async (req, res) => {
   try {
     const instructorId = req.user.id;
-    // courses assigned to this instructor
     const coursesRaw = await sql`SELECT c.* FROM courses c JOIN instructor_courses ic ON ic.course_id = c.id WHERE ic.instructor_id = ${instructorId} ORDER BY c.id DESC`;
     const courses = rows(coursesRaw);
-
-    // learners list for forms
     const learners = await fetchLearners();
-
-    // assignments by this instructor
-    const assignments = await sql`SELECT a.*, c.title as course_title FROM assignments a LEFT JOIN courses c ON c.id = a.course_id WHERE a.instructor_id = ${instructorId} ORDER BY a.created_at DESC`;
-
-    // materials by this instructor
-    const materials = await sql`SELECT m.*, c.title as course_title FROM materials m LEFT JOIN courses c ON c.id = m.course_id WHERE m.instructor_id = ${instructorId} ORDER BY m.created_at DESC`;
-
-    // meetings by this instructor
-    const meetings = await sql`SELECT m.*, c.title as course_title FROM meetings m LEFT JOIN courses c ON c.id = m.course_id WHERE m.instructor_id = ${instructorId} ORDER BY m.start_time DESC`;
-
-    // submissions to grade
-    const submissionsToGrade = await fetchSubmissionsForInstructor(instructorId);
-
-    // recent attendance for admin/instructor overview
+    const assignments = rows(await sql`SELECT a.*, c.title as course_title FROM assignments a LEFT JOIN courses c ON c.id = a.course_id WHERE a.instructor_id = ${instructorId} ORDER BY a.created_at DESC`);
+    const materials = rows(await sql`SELECT m.*, c.title as course_title FROM materials m LEFT JOIN courses c ON c.id = m.course_id WHERE m.instructor_id = ${instructorId} ORDER BY m.created_at DESC`);
+    const meetings = rows(await sql`SELECT m.*, c.title as course_title FROM meetings m LEFT JOIN courses c ON c.id = m.course_id WHERE m.instructor_id = ${instructorId} ORDER BY m.start_time DESC`);
+    const submissionsToGrade = await (async () => {
+      const r = await sql`
+        SELECT s.*, a.title as assignment_title, u.username as learner_name, c.title as course_title, a.instructor_id
+        FROM submissions s
+        LEFT JOIN assignments a ON a.id = s.assignment_id
+        LEFT JOIN users u ON u.id = s.learner_id
+        LEFT JOIN courses c ON c.id = a.course_id
+        WHERE a.instructor_id = ${instructorId}
+        ORDER BY s.submitted_at DESC
+      `;
+      return rows(r);
+    })();
     const attendance = await fetchAttendanceRecent();
 
     res.render("instructorDashboard", {
       user: req.user,
       courses,
       learners,
-      assignments: rows(assignments),
-      materials: rows(materials),
-      meetings: rows(meetings),
+      assignments,
+      materials,
+      meetings,
       submissions: submissionsToGrade,
       attendance,
     });
@@ -665,7 +597,6 @@ app.get("/instructor-dashboard", ensureAuthenticated, ensureRole(2), async (req,
   }
 });
 
-// Create assignment (optional file upload). instructor can choose target learners (array of learner ids)
 app.post("/instructor/create-assignment", ensureAuthenticated, ensureRole(2), upload.single("file"), async (req, res) => {
   try {
     const instructorId = req.user.id;
@@ -691,7 +622,6 @@ app.post("/instructor/create-assignment", ensureAuthenticated, ensureRole(2), up
     `;
     const assignmentId = rows(inserted)[0]?.id;
 
-    // if instructor provided targeted learner ids (array), insert into assignment_targets
     const targets = req.body.target_learners;
     if (assignmentId && targets) {
       const arr = Array.isArray(targets) ? targets : [targets];
@@ -710,7 +640,6 @@ app.post("/instructor/create-assignment", ensureAuthenticated, ensureRole(2), up
   }
 });
 
-// grade submission
 app.post("/instructor/grade", ensureAuthenticated, ensureRole(2), async (req, res) => {
   try {
     const submissionId = Number(req.body.submission_id);
@@ -718,7 +647,6 @@ app.post("/instructor/grade", ensureAuthenticated, ensureRole(2), async (req, re
     const feedback = (req.body.feedback || "").trim() || null;
     if (!submissionId || !grade) return res.status(400).send("Missing data");
 
-    // Optionally check permission (instructor owns assignment). Simple check: instructor or admin allowed.
     const check = await sql`
       SELECT s.id
       FROM submissions s
@@ -736,7 +664,6 @@ app.post("/instructor/grade", ensureAuthenticated, ensureRole(2), async (req, re
   }
 });
 
-// create materials (optional upload)
 app.post("/instructor/create-material", ensureAuthenticated, ensureRole(2), upload.single("file"), async (req, res) => {
   try {
     const instructorId = req.user.id;
@@ -764,7 +691,6 @@ app.post("/instructor/create-material", ensureAuthenticated, ensureRole(2), uplo
   }
 });
 
-// create meeting (google meet link)
 app.post("/instructor/create-meeting", ensureAuthenticated, ensureRole(2), async (req, res) => {
   try {
     const instructorId = req.user.id;
@@ -780,124 +706,63 @@ app.post("/instructor/create-meeting", ensureAuthenticated, ensureRole(2), async
   }
 });
 
-// record attendance for many learners on a given date
-// Replace your /instructor/record-attendance handler with this version
+// record attendance - safe insert using known columns only
 app.post("/instructor/record-attendance", ensureAuthenticated, ensureRole(2), async (req, res) => {
   try {
-    console.log("DEBUG: /instructor/record-attendance called by user:", req.user?.id);
-    console.log("DEBUG: raw req.body:", JSON.stringify(req.body, null, 2));
-
     const instructorId = Number(req.user?.id);
     const courseId = Number(req.body.course_id);
     const date = req.body.date;
     if (!courseId || !date) return res.status(400).send("Missing course or date");
 
-    // helper: compute year and ISO week for the date string (YYYY-MM-DD)
-    function isoWeekYearFromDate(dateStr) {
-      const d = new Date(dateStr + "T00:00:00Z");
-      const year = d.getUTCFullYear();
-      // ISO week:
-      const target = new Date(d.valueOf());
-      const dayNr = (d.getUTCDay() + 6) % 7; // Mon=0..Sun=6
-      target.setUTCDate(target.getUTCDate() - dayNr + 3);
-      const firstThursday = new Date(Date.UTC(target.getUTCFullYear(), 0, 4));
-      const weekNumber = 1 + Math.round((((target - firstThursday) / 86400000) - 3 + ((firstThursday.getUTCDay() + 6) % 7)) / 7);
-      return { year, weekNumber };
-    }
-
-    const { year, weekNumber } = isoWeekYearFromDate(date);
-
-    // iterate incoming form keys for status_<learnerId>
     for (const key of Object.keys(req.body)) {
       const match = key.match(/^status_(\d+)$/);
       if (!match) continue;
       const learnerId = Number(match[1]);
       const statusRaw = (req.body[key] || "").toUpperCase().trim();
       const present = statusRaw === "B" || statusRaw === "P" || statusRaw === "1";
-      // status text: keep your app convention (P = present, A = absent)
       const status = present ? "P" : "A";
 
-      try {
-        await sql`
-          INSERT INTO attendance (
-            learner_id,
-            course_id,
-            date,
-            status,
-            present,
-            instructor_id,
-            year,
-            week_number,
-            created_at
-          )
-          VALUES (
-            ${learnerId},
-            ${courseId},
-            ${date},
-            ${status},
-            ${present},
-            ${instructorId},
-            ${year},
-            ${weekNumber},
-            NOW()
-          )
-          ON CONFLICT (learner_id, course_id, date)
-          DO UPDATE SET
-            status = EXCLUDED.status,
-            present = EXCLUDED.present,
-            instructor_id = EXCLUDED.instructor_id,
-            year = EXCLUDED.year,
-            week_number = EXCLUDED.week_number,
-            created_at = NOW()
-        `;
-      } catch (inErr) {
-        // Log full details for debugging (include learner id and SQL error)
-        console.error("DEBUG: SQL error inserting/updating attendance for learner", learnerId);
-        console.error(inErr && inErr.stack ? inErr.stack : inErr);
-        // Re-throw to hit outer catch and return 500
-        throw inErr;
-      }
+      // Insert/update using only guaranteed columns (schema may vary across deployments)
+      await sql`
+        INSERT INTO attendance (learner_id, course_id, date, status, created_at)
+        VALUES (${learnerId}, ${courseId}, ${date}, ${status}, NOW())
+        ON CONFLICT (learner_id, course_id, date)
+        DO UPDATE SET status = EXCLUDED.status, created_at = NOW()
+      `;
     }
-
     return res.redirect("/instructor-dashboard");
   } catch (err) {
-    // Print full stack (very important for diagnosing)
-    console.error("record attendance ERROR (full):", err && err.stack ? err.stack : err);
+    console.error("record attendance ERROR:", err);
     return res.status(500).send("Server error");
   }
 });
+
 /* -----------------------
-   Learner dashboard
-   - view enrolled courses, materials, meetings
-   - submit assignment (upload or link) -> appears to instructor for grading
-   - request certificate (only if progress=100)
+   Learner routes
    ----------------------- */
 app.get("/learner-dashboard", ensureAuthenticated, ensureRole(3), async (req, res) => {
   try {
     const userId = req.user.id;
-    const courses = await fetchEnrollmentsForUser(userId);
-    const assignments = await fetchAssignmentsForLearner(userId);
-    const submissions = await sql`SELECT s.*, a.title as assignment_title FROM submissions s LEFT JOIN assignments a ON a.id = s.assignment_id WHERE s.learner_id = ${userId} ORDER BY s.submitted_at DESC`;
-    const progress = await sql`SELECT * FROM course_progress WHERE user_id = ${userId}`;
-    // For each enrolled course, fetch materials and meetings (simple demo)
-    const courseIds = rows(courses).map((c) => c.id);
+    const courses = rows(await fetchEnrollmentsForUser(userId));
+    const assignments = rows(await fetchAssignmentsForLearner(userId));
+    const submissions = await fetchSubmissionsForLearner(userId);
+    const progress = rows(await sql`SELECT * FROM course_progress WHERE user_id = ${userId}`);
+    const courseIds = courses.map((c) => c.id);
     const materials = [];
     const meetings = [];
     for (const cid of courseIds) {
-      const m = await fetchMaterialsForCourse(cid);
-      const mt = await fetchMeetingsForCourse(cid);
-      materials.push(...m);
-      meetings.push(...mt);
+      materials.push(...(await fetchMaterialsForCourse(cid)));
+      meetings.push(...(await fetchMeetingsForCourse(cid)));
     }
     res.render("learnerDashboard", {
       user: req.user,
-      courses: rows(courses),
-      assignments: rows(assignments),
-      submissions: rows(submissions),
-      progress: rows(progress),
+      courses,
+      assignments,
+      submissions,
+      progress,
       materials,
       meetings,
-      learners: [req.user], // simple select so learner can choose themselves when submitting
+      learners: [req.user],
     });
   } catch (err) {
     console.error("learner-dashboard", err);
@@ -905,14 +770,12 @@ app.get("/learner-dashboard", ensureAuthenticated, ensureRole(3), async (req, re
   }
 });
 
-// submit assignment (file optional)
 app.post("/learner/submit-assignment", ensureAuthenticated, ensureRole(3), upload.single("file"), async (req, res) => {
   try {
     const learnerId = req.user.id;
     const assignmentId = Number(req.body.assignment_id);
     const external_link = (req.body.external_link || "").trim() || null;
     if (!assignmentId) return res.status(400).send("Missing assignment");
-    // prevent duplicate submissions via unique constraint
     const exists = await sql`SELECT id FROM submissions WHERE assignment_id = ${assignmentId} AND learner_id = ${learnerId}`;
     if (rows(exists).length) return res.status(409).send("Already submitted");
 
@@ -934,14 +797,12 @@ app.post("/learner/submit-assignment", ensureAuthenticated, ensureRole(3), uploa
   }
 });
 
-// request certificate
 app.post("/learner/request-certificate", ensureAuthenticated, ensureRole(3), async (req, res) => {
   try {
     const learnerId = req.user.id;
     const courseId = Number(req.body.course_id);
     if (!courseId) return res.status(400).send("Missing course");
 
-    // Check progress
     const progRes = await sql`SELECT progress_percent FROM course_progress WHERE course_id = ${courseId} AND user_id = ${learnerId} LIMIT 1`;
     const prog = rows(progRes)[0];
     const percent = prog ? Number(prog.progress_percent || 0) : 0;
@@ -957,6 +818,40 @@ app.post("/learner/request-certificate", ensureAuthenticated, ensureRole(3), asy
   } catch (err) {
     console.error("request certificate", err);
     res.status(500).send("Server error");
+  }
+});
+
+/* -----------------------
+   Instructor: update progress
+   ----------------------- */
+app.post("/instructor/update-progress", ensureAuthenticated, ensureRole(2), async (req, res) => {
+  try {
+    const instructorId = Number(req.user?.id);
+    const courseId = Number(req.body.course_id || req.body.courseId || 0);
+    const userId = Number(req.body.user_id || req.body.userId || 0);
+    const percentRaw = Number(req.body.progress_percent || req.body.percent || 0);
+    const percent = Math.max(0, Math.min(100, Number.isNaN(percentRaw) ? 0 : percentRaw));
+
+    if (!courseId || !userId || Number.isNaN(percent)) {
+      return res.status(400).send("Missing or invalid course_id, user_id or progress_percent");
+    }
+
+    // Optional permission check: instructor must be assigned to the course unless admin
+    const assigned = await sql`SELECT 1 FROM instructor_courses WHERE course_id = ${courseId} AND instructor_id = ${instructorId}`;
+    if (!rows(assigned).length && Number(req.user?.role) !== 1) {
+      return res.status(403).send("Not assigned to this course");
+    }
+
+    await sql`
+      INSERT INTO course_progress (course_id, user_id, progress_percent, updated_at)
+      VALUES (${courseId}, ${userId}, ${percent}, NOW())
+      ON CONFLICT (course_id, user_id)
+      DO UPDATE SET progress_percent = EXCLUDED.progress_percent, updated_at = NOW()
+    `;
+    return res.redirect("/instructor-dashboard");
+  } catch (err) {
+    console.error("POST /instructor/update-progress error:", err);
+    return res.status(500).send("Server error");
   }
 });
 

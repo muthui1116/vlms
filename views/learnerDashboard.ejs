@@ -55,55 +55,91 @@
 
     <!-- Assignments -->
     <div class="card shadow-sm">
-      <div class="card-body">
-        <h6 class="card-title">Assignments</h6>
-        <% if (!assignments || assignments.length === 0) { %>
-          <div class="alert alert-info mb-0">No assignments</div>
-        <% } else { %>
-          <ul class="list-group list-group-flush">
-            <% assignments.forEach(a => { %>
-              <li class="list-group-item">
-                <div class="d-flex justify-content-between align-items-start">
-                  <div>
-                    <strong><%= a.title %></strong><br/>
-                    <small class="text-muted"><%= a.instructor_name %></small>
-                    <% if (a.description) { %>
-                      <div class="mt-1 small text-muted"><%= a.description %></div>
-                    <% } %>
-                  </div>
-                  <div class="text-end ms-3">
-                    <% const submitted = (submissions || []).find(s => Number(s.assignment_id) === Number(a.id)); %>
-                    <% if (submitted) { %>
-                      <span class="badge bg-success">Submitted</span>
-                      <% if (submitted.graded) { %>
-                        <div class="small mt-1">Grade: <strong><%= submitted.grade %></strong></div>
-                      <% } %>
-                    <% } else { %>
-                      <button class="btn btn-primary btn-sm" data-bs-toggle="collapse" data-bs-target="#submit-<%= a.id %>" aria-expanded="false" aria-controls="submit-<%= a.id %>">Submit</button>
-                    <% } %>
-                  </div>
+      <div class="card shadow-sm">
+  <div class="card-body">
+    <h6 class="card-title">Assignments</h6>
+
+    <% if (!assignments || assignments.length === 0) { %>
+      <div class="alert alert-info mb-0">No assignments</div>
+    <% } else { %>
+      <ul class="list-group list-group-flush">
+        <% assignments.forEach(a => { %>
+          <% 
+            const submitted = (submissions || []).find(s => Number(s.assignment_id) === Number(a.id));
+            const collapseId = `submit-${a.id}`;
+          %>
+
+          <li class="list-group-item py-3">
+            <div class="d-flex align-items-start justify-content-between gap-3">
+              <div class="me-2 flex-grow-1">
+                <strong><%= a.title %></strong>
+                <% if (a.course_title) { %>
+                  <div class="small text-muted"><%= a.course_title %></div>
+                <% } %>
+                <% if (a.description) { %>
+                  <div class="mt-1 small text-muted"><%= a.description %></div>
+                <% } %>
+                <% if (a.due_date) { %>
+                  <div class="mt-1 small text-danger">Due: <%= a.due_date %></div>
+                <% } %>
+              </div>
+
+              <div class="text-end d-flex flex-column align-items-end gap-2">
+                <div class="btn-group" role="group" aria-label="assignment-actions">
+                  <% if (a.file_link) { %>
+                    <a class="btn btn-sm btn-outline-secondary" href="<%= a.file_link %>" download rel="noopener">
+                      <i class="bi bi-download"></i> Download
+                    </a>
+                  <% } %>
+
+                  <% if (a.external_link) { %>
+                    <a class="btn btn-sm btn-outline-primary" href="<%= a.external_link %>" target="_blank" rel="noopener">
+                      <i class="bi bi-box-arrow-up-right"></i> Open link
+                    </a>
+                  <% } %>
+
+                  <% if (submitted) { %>
+                    <button class="btn btn-sm btn-success" disabled><i class="bi bi-check-lg"></i> Submitted</button>
+                  <% } else { %>
+                    <!-- Submit button always visible for beginner-friendly UX -->
+                    <button class="btn btn-sm btn-primary" type="button" data-bs-toggle="collapse" data-bs-target="#<%= collapseId %>" aria-expanded="false" aria-controls="<%= collapseId %>">
+                      <i class="bi bi-upload"></i> Submit
+                    </button>
+                  <% } %>
                 </div>
 
-                <div class="collapse mt-3" id="submit-<%= a.id %>">
-                  <form action="/learner/submit-assignment" method="POST" enctype="multipart/form-data">
-                    <input type="hidden" name="assignment_id" value="<%= a.id %>" />
-                    <div class="mb-2">
-                      <label class="form-label small">Optional file</label>
-                      <input type="file" name="file" class="form-control form-control-sm" />
-                    </div>
-                    <div class="mb-2">
-                      <input name="external_link" class="form-control form-control-sm" placeholder="Optional external link" />
-                    </div>
-                    <div class="d-grid">
-                      <button class="btn btn-success btn-sm" type="submit">Submit assignment</button>
-                    </div>
-                  </form>
+                <div class="small text-muted mt-1">
+                  <%= a.instructor_name ? 'Instructor: ' + a.instructor_name : '' %>
                 </div>
-              </li>
-            <% }) %>
-          </ul>
-        <% } %>
-      </div>
+              </div>
+            </div>
+
+            <% if (!submitted) { %>
+              <div class="collapse mt-3" id="<%= collapseId %>">
+                <form action="/learner/submit-assignment" method="POST" enctype="multipart/form-data" class="row g-2 align-items-end">
+                  <input type="hidden" name="assignment_id" value="<%= a.id %>" />
+                  <div class="col-12 col-md-6">
+                    <label class="form-label visually-hidden" for="file-<%= a.id %>">File</label>
+                    <input id="file-<%= a.id %>" type="file" name="file" class="form-control form-control-sm" />
+                  </div>
+                  <div class="col-12 col-md-4">
+                    <label class="form-label visually-hidden" for="link-<%= a.id %>">External link</label>
+                    <input id="link-<%= a.id %>" name="external_link" class="form-control form-control-sm" placeholder="Optional external link" />
+                  </div>
+                  <div class="col-12 col-md-2">
+                    <div class="d-grid">
+                      <button class="btn btn-success btn-sm" type="submit">Send</button>
+                    </div>
+                  </div>
+                </form>
+              </div>
+            <% } %>
+          </li>
+        <% }) %>
+      </ul>
+    <% } %>
+  </div>
+</div>
     </div>
   </div>
 
