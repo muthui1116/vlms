@@ -44,7 +44,7 @@
                       <% if (c.link) { %>
                         <!-- Responsive button: full width on small, auto on md+ -->
                         <div class="mt-2">
-                          <a class="btn btn-sm btn-outline-primary w-100 w-md-auto" href="<%= c.link %>" target="_blank" rel="noopener noreferrer">Open</a>
+                          <a class="btn btn-sm btn-outline-primary w-100 w-md-auto" href="/login" target="_blank" rel="noopener noreferrer">Open</a>
                         </div>
                       <% } %>
                     </div>
@@ -58,9 +58,12 @@
     </div>
 
     <!-- Assignments -->
-    <div class="card shadow-sm">
+    <div class="card shadow-sm mb-3">
       <div class="card-body">
-        <h6 class="card-title">Assignments</h6>
+        <div class="d-flex justify-content-between align-items-center mb-2">
+          <h6 class="card-title mb-0">Assignments</h6>
+          <small class="text-muted">Submit and view grades</small>
+        </div>
 
         <% if (!assignments || assignments.length === 0) { %>
           <div class="alert alert-info mb-0">No assignments</div>
@@ -70,6 +73,8 @@
               <% 
                 const submitted = (submissions || []).find(s => Number(s.assignment_id) === Number(a.id));
                 const collapseId = `submit-${a.id}`;
+                const graded = submitted && (submitted.graded || (submitted.grade !== null && submitted.grade !== undefined && submitted.grade !== ''));
+                const gradeText = graded ? (submitted.grade ?? '') : null;
               %>
 
               <li class="list-group-item py-3">
@@ -103,7 +108,15 @@
                       <% } %>
 
                       <% if (submitted) { %>
-                        <button class="btn btn-sm btn-success w-100 w-md-auto" disabled><i class="bi bi-check-lg"></i> Submitted</button>
+                        <% if (graded) { %>
+                          <button class="btn btn-sm btn-success w-100 w-md-auto" disabled>
+                            <i class="bi bi-award"></i> Grade: <%= gradeText %>
+                          </button>
+                        <% } else { %>
+                          <button class="btn btn-sm btn-secondary w-100 w-md-auto" disabled>
+                            <i class="bi bi-hourglass-split"></i> Submitted
+                          </button>
+                        <% } %>
                       <% } else { %>
                         <!-- Submit button always visible for beginner-friendly UX -->
                         <button class="btn btn-sm btn-primary w-100 w-md-auto" type="button" data-bs-toggle="collapse" data-bs-target="#<%= collapseId %>" aria-expanded="false" aria-controls="<%= collapseId %>">
@@ -114,6 +127,11 @@
 
                     <div class="small text-muted mt-1 text-start text-md-end">
                       <%= a.instructor_name ? 'Instructor: ' + a.instructor_name : '' %>
+                      <% if (submitted && graded && submitted.graded_at) { %>
+                        <div class="small text-muted">Graded: <%= new Date(submitted.graded_at).toLocaleString() %></div>
+                      <% } else if (submitted && graded && submitted.updated_at) { %>
+                        <div class="small text-muted">Graded: <%= new Date(submitted.updated_at).toLocaleString() %></div>
+                      <% } %>
                     </div>
                   </div>
                 </div>
@@ -141,6 +159,46 @@
               </li>
             <% }) %>
           </ul>
+        <% } %>
+      </div>
+    </div>
+
+    <!-- Compact grades summary -->
+    <div class="card shadow-sm">
+      <div class="card-body">
+        <div class="d-flex justify-content-between align-items-center mb-2">
+          <h6 class="card-title mb-0">Your grades</h6>
+          <small class="text-muted">Recent graded assignments</small>
+        </div>
+
+        <% const gradedList = (submissions || []).filter(s => s && (s.graded || (s.grade !== null && s.grade !== undefined && s.grade !== ''))); %>
+
+        <% if (!gradedList || gradedList.length === 0) { %>
+          <div class="alert alert-info mb-0">No grades yet</div>
+        <% } else { %>
+          <ul class="list-group list-group-flush">
+            <% gradedList.slice(0, 6).forEach(g => { %>
+              <li class="list-group-item d-flex justify-content-between align-items-center">
+                <div>
+                  <strong><%= g.assignment_title || 'Assignment' %></strong>
+                  <% if (g.course_title) { %><div class="small text-muted"><%= g.course_title %></div><% } %>
+                </div>
+                <div class="text-end">
+                  <div class="fw-bold"><%= g.grade ?? '' %></div>
+                  <% if (g.graded_at || g.updated_at || g.submitted_at) { %>
+                    <small class="text-muted">
+                      <%= new Date(g.graded_at || g.updated_at || g.submitted_at).toLocaleString() %>
+                    </small>
+                  <% } %>
+                </div>
+              </li>
+            <% }) %>
+          </ul>
+          <% if (gradedList.length > 6) { %>
+            <div class="mt-2 text-center">
+              <a href="/learner/grades" class="small">View all grades</a>
+            </div>
+          <% } %>
         <% } %>
       </div>
     </div>
