@@ -824,14 +824,17 @@ app.post("/learner/request-certificate", ensureAuthenticated, ensureRole(3), asy
 /* -----------------------
    Instructor: update progress
    ----------------------- */
+// Replace the existing app.post("/instructor/update-progress", ...) handler with this block
+
 app.post("/instructor/update-progress", ensureAuthenticated, ensureRole(2), async (req, res) => {
   try {
     const instructorId = Number(req.user?.id);
     const courseId = Number(req.body.course_id || req.body.courseId || 0);
-    const userId = Number(req.body.user_id || req.body.userId || 0);
+    const userId = Number(req.body.user_id || req.body.userId || 0); // THIS is the learner
     const percentRaw = Number(req.body.progress_percent || req.body.percent || 0);
     const percent = Math.max(0, Math.min(100, Number.isNaN(percentRaw) ? 0 : percentRaw));
 
+    // Validate required inputs early
     if (!courseId || !userId || Number.isNaN(percent)) {
       return res.status(400).send("Missing or invalid course_id, user_id or progress_percent");
     }
@@ -842,15 +845,40 @@ app.post("/instructor/update-progress", ensureAuthenticated, ensureRole(2), asyn
       return res.status(403).send("Not assigned to this course");
     }
 
-    await sql`
-      INSERT INTO course_progress (course_id, user_id, progress_percent, updated_at)
-      VALUES (${courseId}, ${userId}, ${percent}, NOW())
-      ON CONFLICT (course_id, user_id)
-      DO UPDATE SET progress_percent = EXCLUDED.progress_percent, updated_at = NOW()
+    // Inspect information_schema to detect whether course_progress has a learner_id column
+    const colInfoRaw = await sql`
+      SELECT column_name, is_nullable
+      FROM information_schema.columns
+      WHERE table_name = 'course_progress' AND column_name = 'learner_id'
+      LIMIT 1
     `;
+    const colInfo = rows(colInfoRaw)[0];
+    const hasLearnerId = !!colInfo;
+    const learnerIdNotNullable = hasLearnerId && colInfo.is_nullable === 'NO';
+
+    // Perform INSERT ... ON CONFLICT upsert depending on schema
+    if (hasLearnerId) {
+      // If learner_id exists and is NOT NULL, we include it.
+      // If it is nullable, including it is still fine.
+      await sql`
+        INSERT INTO course_progress (course_id, user_id, learner_id, progress_percent, updated_at)
+        VALUES (${courseId}, ${userId}, ${userId}, ${percent}, NOW())
+        ON CONFLICT (course_id, user_id)
+        DO UPDATE SET progress_percent = EXCLUDED.progress_percent, updated_at = NOW()
+      `;
+    } else {
+      // Schema without learner_id column
+      await sql`
+        INSERT INTO course_progress (course_id, user_id, progress_percent, updated_at)
+        VALUES (${courseId}, ${userId}, ${percent}, NOW())
+        ON CONFLICT (course_id, user_id)
+        DO UPDATE SET progress_percent = EXCLUDED.progress_percent, updated_at = NOW()
+      `;
+    }
+
     return res.redirect("/instructor-dashboard");
   } catch (err) {
-    console.error("POST /instructor/update-progress error:", err);
+    console.error("POST /instructor/update-progress error:", err && err.stack ? err.stack : err);
     return res.status(500).send("Server error");
   }
 });
